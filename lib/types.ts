@@ -14,3 +14,16 @@ export interface Summary {
   totalIncome: number;
   totalExpenses: number;
 }
+
+export type InvestmentType = 'stock' | 'crypto' | 'stake';
+
+export interface Investment {
+  id: string;
+  name: string;
+  symbol: string;
+  type: InvestmentType;
+  quantity: number;
+  buyPrice: number;
+  currentPrice: number;
+  date: string;
+}

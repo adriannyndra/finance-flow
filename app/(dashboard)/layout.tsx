@@ -13,6 +13,7 @@ export default function DashboardLayout({
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: '🏠' },
     { name: 'Transactions', href: '/transactions', icon: '💸' },
+    { name: 'Investments', href: '/investments', icon: '📈' },
   ];
 
   return (
@@ -21,8 +22,7 @@ export default function DashboardLayout({
       <aside className="hidden md:flex w-64 flex-col bg-white border-r border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800">
         <div className="flex h-16 items-center px-6">
           <span className="text-xl font-bold text-zinc-900 dark:text-zinc-50">
-            {/* Finance<span className="text-emerald-600">Flow</span> */}
-            jenengi dewe <span className="text-emerald-600"> aplikasie</span>
+            Finance<span className="text-emerald-600">Flow</span>
           </span>
         </div>
         <nav className="flex-1 space-y-1 px-4 py-4">
@@ -47,8 +47,7 @@ export default function DashboardLayout({
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden pb-20 md:pb-0">
         <header className="h-16 flex items-center justify-between px-6 bg-white border-b border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 md:hidden">
           <span className="text-lg font-bold text-zinc-900 dark:text-zinc-50">
-            {/* Finance<span className="text-emerald-600">Flow</span> */}
-            jenengi dewe <span className="text-emerald-600"> aplikasie</span>
+            Finance<span className="text-emerald-600">Flow</span>
           </span>
           <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xs">
             JD

@@ -1,4 +1,4 @@
-import { Transaction } from './types';
+import { Transaction, Investment } from './types';
 
 export const MOCK_TRANSACTIONS: Transaction[] = [
   {
@@ -40,5 +40,48 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
     description: 'Logo Design Project',
     date: '2024-04-05',
     type: 'income',
+  },
+];
+
+export const MOCK_INVESTMENTS: Investment[] = [
+  {
+    id: 'inv-1',
+    name: 'Bank Central Asia',
+    symbol: 'BBCA.JK',
+    type: 'stock',
+    quantity: 1000,
+    buyPrice: 9100,
+    currentPrice: 9850,
+    date: '2024-01-15',
+  },
+  {
+    id: 'inv-2',
+    name: 'Bitcoin',
+    symbol: 'BTC',
+    type: 'crypto',
+    quantity: 0.05,
+    buyPrice: 42000,
+    currentPrice: 65000,
+    date: '2023-11-20',
+  },
+  {
+    id: 'inv-3',
+    name: 'Local Coffee Shop',
+    symbol: 'LCS',
+    type: 'stake',
+    quantity: 1,
+    buyPrice: 5000,
+    currentPrice: 4800,
+    date: '2024-02-10',
+  },
+  {
+    id: 'inv-4',
+    name: 'Ethereum',
+    symbol: 'ETH',
+    type: 'crypto',
+    quantity: 1.2,
+    buyPrice: 2400,
+    currentPrice: 3200,
+    date: '2024-03-05',
   },
 ];
