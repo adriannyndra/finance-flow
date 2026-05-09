@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { MOCK_INVESTMENTS } from '@/lib/mock-data';
+import { useState, useMemo, useEffect } from 'react';
 import { Investment, InvestmentType } from '@/lib/types';
 import StockChart from '@/components/StockChart';
 import { Trash2, Filter, Search, Loader2 } from 'lucide-react';
+import { createClient } from '@/utils/supabase/client';
+import { getUserId } from '@/utils/auth/get-user-id';
 
 const formatIDR = (amount: number) => {
   return new Intl.NumberFormat('id-ID', {
@@ -16,13 +17,15 @@ const formatIDR = (amount: number) => {
 };
 
 export default function InvestmentsPage() {
-  const [investments, setInvestments] = useState<Investment[]>(MOCK_INVESTMENTS);
+  const [investments, setInvestments] = useState<Investment[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [isFetchingPrice, setIsFetchingPrice] = useState(false);
   const [filter, setFilter] = useState<'all' | InvestmentType>('all');
-  const [selectedInvestment, setSelectedInvestment] = useState<Investment | null>(
-    MOCK_INVESTMENTS.find(inv => inv.type !== 'stake') || MOCK_INVESTMENTS[0]
-  );
+  const [selectedInvestment, setSelectedInvestment] = useState<Investment | null>(null);
+
+  const supabase = createClient();
+  const userId = getUserId();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -32,6 +35,30 @@ export default function InvestmentsPage() {
     buyPrice: '',
     currentPrice: '',
   });
+
+  useEffect(() => {
+    fetchInvestments();
+  }, [userId]);
+
+  const fetchInvestments = async () => {
+    if (!userId) return;
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('ff_investments')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching investments:', error);
+    } else {
+      setInvestments(data || []);
+      if (data && data.length > 0 && !selectedInvestment) {
+        setSelectedInvestment(data.find(inv => inv.type !== 'stake') || data[0]);
+      }
+    }
+    setLoading(false);
+  };
 
   const fetchCurrentPrice = async () => {
     if (!formData.symbol) return;
@@ -63,42 +90,72 @@ export default function InvestmentsPage() {
   const totalGainLoss = currentValue - totalInvested;
   const totalGainLossPercentage = totalInvested !== 0 ? (totalGainLoss / totalInvested) * 100 : 0;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!userId) return;
+
     const buyPrice = parseFloat(formData.buyPrice);
     const totalAmount = parseFloat(formData.totalInvested);
     const quantity = totalAmount / buyPrice;
 
-    const newInv: Investment = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: formData.name,
-      symbol: formData.symbol.toUpperCase(),
-      type: formData.type,
-      quantity: quantity,
-      buyPrice: buyPrice,
-      currentPrice: parseFloat(formData.currentPrice),
-      date: new Date().toISOString().split('T')[0],
-    };
+    const { data, error } = await supabase
+      .from('ff_investments')
+      .insert([
+        {
+          user_id: userId,
+          name: formData.name,
+          symbol: formData.symbol.toUpperCase(),
+          type: formData.type,
+          quantity: quantity,
+          buy_price: buyPrice,
+          current_price: parseFloat(formData.currentPrice),
+          date: new Date().toISOString().split('T')[0],
+        }
+      ])
+      .select();
 
-    setInvestments([newInv, ...investments]);
-    setIsAdding(false);
-    setFormData({
-      name: '',
-      symbol: '',
-      type: 'stock',
-      totalInvested: '',
-      buyPrice: '',
-      currentPrice: '',
-    });
-  };
-
-  const deleteInvestment = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setInvestments(investments.filter(inv => inv.id !== id));
-    if (selectedInvestment?.id === id) {
-      setSelectedInvestment(null);
+    if (error) {
+      alert(`Gagal menyimpan: ${error.message}`);
+    } else {
+      setInvestments([data[0], ...investments]);
+      setIsAdding(false);
+      setFormData({
+        name: '',
+        symbol: '',
+        type: 'stock',
+        totalInvested: '',
+        buyPrice: '',
+        currentPrice: '',
+      });
     }
   };
+
+  const deleteInvestment = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('Hapus aset ini?')) return;
+
+    const { error } = await supabase
+      .from('ff_investments')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      alert(`Gagal menghapus: ${error.message}`);
+    } else {
+      setInvestments(investments.filter(inv => inv.id !== id));
+      if (selectedInvestment?.id === id) {
+        setSelectedInvestment(null);
+      }
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="h-96 flex items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-emerald-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
