@@ -56,8 +56,19 @@ export default function DashboardPage() {
         .select('*')
         .eq('user_id', userId);
 
+      const mappedInvestments: Investment[] = (investData || []).map(inv => ({
+        id: inv.id,
+        name: inv.name,
+        symbol: inv.symbol,
+        type: inv.type,
+        quantity: Number(inv.quantity),
+        buyPrice: Number(inv.buy_price),
+        currentPrice: Number(inv.current_price || 0),
+        date: inv.date
+      }));
+
       setTransactions(transData || []);
-      setInvestments(investData || []);
+      setInvestments(mappedInvestments);
     } catch (error) {
       console.error('Error loading dashboard:', error);
     } finally {

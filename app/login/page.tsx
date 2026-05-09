@@ -47,10 +47,11 @@ export default function LoginPage() {
       const user = data[0];
       console.log('Login SUCCESS for user ID:', user.id);
 
-      document.cookie = `user_session=${user.id}; path=/; max-age=3600; SameSite=Lax`;
+      // Set manual session cookie with broader compatibility for local network IPs
+      document.cookie = `user_session=${user.id}; path=/; max-age=3600`;
       
-      router.push('/dashboard');
-      router.refresh();
+      // Use window.location for a harder redirect to ensure cookies are picked up on network IPs
+      window.location.href = '/dashboard';
     } catch (err: any) {
       console.error('Caught Exception:', err.message);
       setError(err.message);

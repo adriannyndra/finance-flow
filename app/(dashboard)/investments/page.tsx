@@ -52,9 +52,19 @@ export default function InvestmentsPage() {
     if (error) {
       console.error('Error fetching investments:', error);
     } else {
-      setInvestments(data || []);
-      if (data && data.length > 0 && !selectedInvestment) {
-        setSelectedInvestment(data.find(inv => inv.type !== 'stake') || data[0]);
+      const mappedData: Investment[] = (data || []).map(inv => ({
+        id: inv.id,
+        name: inv.name,
+        symbol: inv.symbol,
+        type: inv.type,
+        quantity: Number(inv.quantity),
+        buyPrice: Number(inv.buy_price),
+        currentPrice: Number(inv.current_price || 0),
+        date: inv.date
+      }));
+      setInvestments(mappedData);
+      if (mappedData.length > 0 && !selectedInvestment) {
+        setSelectedInvestment(mappedData.find(inv => inv.type !== 'stake') || mappedData[0]);
       }
     }
     setLoading(false);
