@@ -127,7 +127,19 @@ export default function InvestmentsPage() {
     if (error) {
       alert(`Gagal menyimpan: ${error.message}`);
     } else {
-      setInvestments([data[0], ...investments]);
+      const newInv = data[0];
+      const mappedNewInv: Investment = {
+        id: newInv.id,
+        name: newInv.name,
+        symbol: newInv.symbol,
+        type: newInv.type,
+        quantity: Number(newInv.quantity),
+        buyPrice: Number(newInv.buy_price),
+        currentPrice: Number(newInv.current_price || 0),
+        date: newInv.date,
+      };
+
+      setInvestments([mappedNewInv, ...investments]);
       setIsAdding(false);
       setFormData({
         name: '',
