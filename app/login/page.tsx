@@ -63,8 +63,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 p-4">
       <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-zinc-200 dark:border-zinc-800 p-8">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">Finance Manager</h1>
-          <p className="text-zinc-500 dark:text-zinc-400 mt-2">Masuk ke akun Anda</p>
+          <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">FinanceFlow</h1>
+          <p className="text-zinc-500 dark:text-zinc-400 mt-2">Login cak</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
@@ -80,7 +80,7 @@ export default function LoginPage() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 rounded-lg border border-zinc-300 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                placeholder="Masukkan username"
+                placeholder="Username"
               />
             </div>
           </div>
@@ -97,7 +97,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 rounded-lg border border-zinc-300 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                placeholder="Masukkan password"
+                placeholder="Password"
               />
             </div>
           </div>
