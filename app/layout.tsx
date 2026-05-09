@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Finance Manager",
-  description: "Financial Manager application.",
+  title: "FinanceFlow",
+  description: "Smart money management for everyone",
 };
 
 export default function RootLayout({
