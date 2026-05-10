@@ -209,7 +209,8 @@ export default function TransactionsPage() {
                   <td className="px-6 py-4 text-center">
                     <button
                       onClick={() => deleteTransaction(t.id)}
-                      className="p-1 text-zinc-400 hover:text-rose-600 transition-colors opacity-0 group-hover:opacity-100"
+                      className="p-2 text-zinc-400 hover:text-rose-600 transition-colors"
+                      title="Hapus Transaksi"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

@@ -435,7 +435,7 @@ export default function InvestmentsPage() {
                       <td className="px-6 py-4 text-center">
                         <button
                           onClick={(e) => deleteInvestment(inv.id, e)}
-                          className="p-2 text-zinc-400 hover:text-rose-600 transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-2 text-zinc-400 hover:text-rose-600 transition-colors"
                           title="Hapus Aset"
                         >
                           <Trash2 className="w-4 h-4" />
