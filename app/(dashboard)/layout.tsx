@@ -14,6 +14,7 @@ export default function DashboardLayout({
     { name: 'Dashboard', href: '/dashboard', icon: '🏠' },
     { name: 'Transactions', href: '/transactions', icon: '💸' },
     { name: 'Investments', href: '/investments', icon: '📈' },
+    { name: 'Settings', href: '/settings', icon: '⚙️' },
   ];
 
   return (
