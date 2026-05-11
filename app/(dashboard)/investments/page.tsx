@@ -37,16 +37,27 @@ export default function InvestmentsPage() {
   });
 
   useEffect(() => {
-    fetchInvestments();
+    const initInvestments = async () => {
+      if (userId) {
+        await fetchInvestments(userId);
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await fetchInvestments(user.id);
+        } else {
+          setLoading(false);
+        }
+      }
+    };
+    initInvestments();
   }, [userId]);
 
-  const fetchInvestments = async () => {
-    if (!userId) return;
+  const fetchInvestments = async (uid: string) => {
     setLoading(true);
     const { data, error } = await supabase
       .from('ff_investments')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', uid)
       .order('created_at', { ascending: false });
 
     if (error) {

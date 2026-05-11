@@ -3,70 +3,82 @@
 import { useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { useRouter } from 'next/navigation';
-import { Loader2, Lock, User } from 'lucide-react';
+import { Loader2, Lock, Mail } from 'lucide-react'; // Swapped User for Mail
 
 export default function LoginPage() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState(''); // Changed from username
   const [password, setPassword] = useState('');
   const [isRegister, setIsRegister] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null); // For success messages
   const router = useRouter();
   const supabase = createClient();
 
   const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
+      e.preventDefault();
+      setLoading(true);
+      setError(null);
+      setMessage(null);
+
+      try {
+        if (isRegister) {
+          const { data, error: regError } = await supabase.auth.signUp({
+            email: email,
+            password: password,
+          });
+
+          if (regError) throw new Error(regError.message); 
+          
+          if (data.user) {
+            document.cookie = `user_session=${data.user.id}; path=/; max-age=31536000; SameSite=Lax`;
+          }
+          
+          // Note: If you turned Email Confirmations back ON, tell them to check their email here.
+          window.location.href = '/dashboard';
+          
+        } else {
+          const { data, error: loginError } = await supabase.auth.signInWithPassword({
+            email: email,
+            password: password,
+          });
+          
+          if (loginError) throw new Error('Email atau password salah');
+          
+          if (data.user) {
+            document.cookie = `user_session=${data.user.id}; path=/; max-age=31536000; SameSite=Lax`;
+          }
+          
+          window.location.href = '/dashboard';
+        }
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+  };
+
+  const handleResetPassword = async () => {
+    if (!email) {
+      setError('Masukkan email Anda di atas, lalu klik Lupa Password.');
+      return;
+    }
+    
     setLoading(true);
     setError(null);
+    setMessage(null);
 
-    try {
-      if (isRegister) {
-        // Check if username already exists
-        const { data: existingUser } = await supabase
-          .from('ff_user')
-          .select('id')
-          .eq('username', username)
-          .maybeSingle();
+    // This tells Supabase to send an email with a link that points to your new page
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/update-password`,
+    });
 
-        if (existingUser) {
-          throw new Error('Username sudah digunakan');
-        }
-
-        // Register new user
-        const { data: newUser, error: regError } = await supabase
-          .from('ff_user')
-          .insert([{ username, password }])
-          .select()
-          .single();
-
-        if (regError) throw regError;
-        
-        // Auto login after register
-        document.cookie = `user_session=${newUser.id}; path=/; max-age=3600`;
-        window.location.href = '/dashboard';
-      } else {
-        // Login logic
-        const { data, error: queryError } = await supabase
-          .from('ff_user')
-          .select('*')
-          .eq('username', username)
-          .eq('password', password)
-          .maybeSingle();
-        
-        if (queryError) throw queryError;
-
-        if (!data) {
-          throw new Error('Username atau password salah');
-        }
-
-        document.cookie = `user_session=${data.id}; path=/; max-age=3600`;
-        window.location.href = '/dashboard';
-      }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+    if (error) {
+      setError(error.message);
+    } else {
+      setMessage('Link reset password telah dikirim ke email Anda!');
     }
+    setLoading(false);
   };
 
   return (
@@ -82,34 +94,46 @@ export default function LoginPage() {
         <form onSubmit={handleAuth} className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
-              Username
+              Email
             </label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
               <input
-                type="text"
+                type="email"
                 required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 rounded-lg border border-zinc-300 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                placeholder="Username"
+                placeholder="email@domain.com"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
-              Password
-            </label>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Password
+              </label>
+              {!isRegister && (
+                <button
+                  type="button"
+                  onClick={handleResetPassword}
+                  className="text-xs text-emerald-600 hover:text-emerald-500 font-medium"
+                >
+                  Lupa Password?
+                </button>
+              )}
+            </div>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
               <input
                 type="password"
-                required
+                required={!isRegister && message ? false : true} // Don't require pass if they just want a reset link
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 rounded-lg border border-zinc-300 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                placeholder="Password"
+                placeholder="Minimal 6 karakter"
+                minLength={6}
               />
             </div>
           </div>
@@ -117,6 +141,11 @@ export default function LoginPage() {
           {error && (
             <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 text-sm">
               {error}
+            </div>
+          )}
+          {message && (
+            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-600 text-sm">
+              {message}
             </div>
           )}
 
@@ -138,7 +167,11 @@ export default function LoginPage() {
 
         <div className="mt-6 text-center">
           <button
-            onClick={() => setIsRegister(!isRegister)}
+            onClick={() => {
+              setIsRegister(!isRegister);
+              setError(null);
+              setMessage(null);
+            }}
             className="text-sm text-emerald-600 hover:text-emerald-500 font-medium"
           >
             {isRegister ? 'Sudah punya akun? Login' : 'Belum punya akun? Daftar'}

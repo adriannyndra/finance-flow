@@ -32,16 +32,27 @@ export default function TransactionsPage() {
   });
 
   useEffect(() => {
-    fetchTransactions();
+    const initTransactions = async () => {
+      if (userId) {
+        await fetchTransactions(userId);
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await fetchTransactions(user.id);
+        } else {
+          setLoading(false);
+        }
+      }
+    };
+    initTransactions();
   }, [userId]);
 
-  const fetchTransactions = async () => {
-    if (!userId) return;
+  const fetchTransactions = async (uid: string) => {
     setLoading(true);
     const { data, error } = await supabase
       .from('ff_transactions')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', uid)
       .order('date', { ascending: false });
 
     if (error) {

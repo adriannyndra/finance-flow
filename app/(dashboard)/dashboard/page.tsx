@@ -26,35 +26,49 @@ export default function DashboardPage() {
   const userId = getUserId();
 
   useEffect(() => {
-    if (userId) {
-      fetchDashboardData();
-    }
+    const initDashboard = async () => {
+      if (userId) {
+        await fetchDashboardData(userId);
+      } else {
+        // Fallback: check if supabase has a user session
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await fetchDashboardData(user.id);
+        } else {
+          setLoading(false);
+          // Optional: redirect to login if no user at all
+          // router.push('/login');
+        }
+      }
+    };
+    
+    initDashboard();
   }, [userId]);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (uid: string) => {
     setLoading(true);
     try {
       // Fetch user info
-      const { data: userData } = await supabase
-        .from('ff_user')
-        .select('username')
-        .eq('id', userId)
-        .single();
-      
-      if (userData) setUserName(userData.username);
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (user) {
+        // Use the display name we saved during registration, or fallback to their email name
+        const displayName = user.user_metadata?.display_name || user.email?.split('@')[0] || 'User';
+        setUserName(displayName);
+      }
 
       // Fetch transactions
       const { data: transData } = await supabase
         .from('ff_transactions')
         .select('*')
-        .eq('user_id', userId)
+        .eq('user_id', uid)
         .order('date', { ascending: false });
 
       // Fetch investments
       const { data: investData } = await supabase
         .from('ff_investments')
         .select('*')
-        .eq('user_id', userId);
+        .eq('user_id', uid);
 
       const mappedInvestments: Investment[] = (investData || []).map(inv => ({
         id: inv.id,
