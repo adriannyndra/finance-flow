@@ -1,20 +1,12 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { Investment, InvestmentType } from '@/lib/types';
+import { Investment, InvestmentType } from '@/core/entities';
+import { formatIDR } from '@/core/formatters/currency';
 import StockChart from '@/components/StockChart';
 import { Trash2, Filter, Search, Loader2 } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 import { getUserId } from '@/utils/auth/get-user-id';
-
-const formatIDR = (amount: number) => {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-};
 
 export default function InvestmentsPage() {
   const [investments, setInvestments] = useState<Investment[]>([]);

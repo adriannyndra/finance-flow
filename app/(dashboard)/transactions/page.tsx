@@ -1,52 +1,26 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Transaction, TransactionType } from '@/lib/types';
-import { createClient } from '@/utils/supabase/client';
+import { useState, useEffect, useMemo } from 'react';
+import { Transaction, TransactionType } from '@/core/entities';
+import { formatIDR, formatNumberInput, parseNumberInput } from '@/core/formatters/currency';
 import { getUserId } from '@/utils/auth/get-user-id';
 import { Loader2, Trash2, Edit2, X, Check } from 'lucide-react';
 
-const formatIDR = (amount: number) => {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-};
+// Clean Architecture Imports
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/transactions/domain/types';
+import { SupabaseTransactionRepository } from '@/features/transactions/infrastructure/SupabaseTransactionRepository';
+import { GetUserTransactions } from '@/features/transactions/use-cases/GetUserTransactions';
+import { AddTransaction } from '@/features/transactions/use-cases/AddTransaction';
+import { UpdateTransaction } from '@/features/transactions/use-cases/UpdateTransaction';
+import { DeleteTransaction } from '@/features/transactions/use-cases/DeleteTransaction';
+import { createClient } from '@/utils/supabase/client';
 
-// Helper to format input string with thousands separators
-const formatNumberInput = (value: string) => {
-  if (!value) return '';
-  const number = value.replace(/\D/g, '');
-  if (!number) return '';
-  return number.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-};
-
-// Helper to parse the formatted string back to a number
-const parseNumberInput = (formattedValue: string) => {
-  return formattedValue.replace(/\./g, '');
-};
-
-const EXPENSE_CATEGORIES = [
-  "Food & Dining",
-  "Transportation",
-  "Housing & Utilities",
-  "Entertainment",
-  "Shopping",
-  "Health",
-  "Personal Care",
-  "Education",
-  "Gifts & Donations",
-  "Bills",
-  "Other"
-];
-
-const INCOME_CATEGORIES = [
-  "Primary",
-  "Secondary",
-  "Other"
-];
+// Repository and Use Case initialization (ideally this would be via DI/Provider)
+const repository = new SupabaseTransactionRepository();
+const getUserTransactions = new GetUserTransactions(repository);
+const addTransactionUseCase = new AddTransaction(repository);
+const updateTransactionUseCase = new UpdateTransaction(repository);
+const deleteTransactionUseCase = new DeleteTransaction(repository);
 
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -65,6 +39,59 @@ export default function TransactionsPage() {
     type: 'expense' as TransactionType,
     date: new Date().toISOString().split('T')[0],
   });
+
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Derived state for description history
+  const descriptionHistory = useMemo(() => {
+    const history: Record<string, { category: string; type: TransactionType }> = {};
+    // Process from oldest to newest so the most recent ones win
+    [...transactions].reverse().forEach(t => {
+      history[t.description.toLowerCase()] = { 
+        category: t.category, 
+        type: t.type 
+      };
+    });
+    return history;
+  }, [transactions]);
+
+  const handleDescriptionChange = (val: string) => {
+    setFormData({ ...formData, description: val });
+    
+    if (val.length > 1) {
+      const filtered = Object.keys(descriptionHistory)
+        .filter(desc => desc.includes(val.toLowerCase()))
+        .slice(0, 5); // Limit to 5 suggestions
+      setSuggestions(filtered);
+      setShowSuggestions(filtered.length > 0);
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+
+  const selectSuggestion = (suggestion: string) => {
+    const historyItem = Object.entries(descriptionHistory).find(
+      ([desc]) => desc === suggestion.toLowerCase()
+    );
+
+    const originalDesc = transactions.find(
+        t => t.description.toLowerCase() === suggestion.toLowerCase()
+    )?.description || suggestion;
+
+    if (historyItem) {
+      const { category, type } = historyItem[1];
+      setFormData({
+        ...formData,
+        description: originalDesc,
+        category: category,
+        type: type
+      });
+    } else {
+      setFormData({ ...formData, description: originalDesc });
+    }
+    setShowSuggestions(false);
+  };
 
   const [editFormData, setEditFormData] = useState({
     amountDisplay: '',
@@ -113,17 +140,8 @@ export default function TransactionsPage() {
   const fetchTransactions = async (uid: string) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('ff_transactions')
-        .select('*')
-        .eq('user_id', uid)
-        .order('date', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching transactions:', error);
-      } else {
-        setTransactions(data || []);
-      }
+      const data = await getUserTransactions.execute(uid);
+      setTransactions(data);
     } catch (err) {
       console.error('Fetch error:', err);
     } finally {
@@ -154,33 +172,23 @@ export default function TransactionsPage() {
 
     setIsSaving(true);
     try {
-      const { data, error } = await supabase
-        .from('ff_transactions')
-        .insert([
-          {
-            user_id: uid,
-            amount: parseFloat(rawAmount),
-            description: formData.description,
-            category: formData.category,
-            type: formData.type,
-            date: formData.date,
-          }
-        ])
-        .select();
+      const newTransaction = await addTransactionUseCase.execute(uid, {
+        amount: parseFloat(rawAmount),
+        description: formData.description,
+        category: formData.category,
+        type: formData.type,
+        date: formData.date,
+      });
 
-      if (error) {
-        alert(`Gagal menyimpan: ${error.message}`);
-      } else {
-        setTransactions([data[0], ...transactions]);
-        setIsAdding(false);
-        setFormData({
-          amountDisplay: '',
-          description: '',
-          category: formData.type === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0],
-          type: formData.type,
-          date: new Date().toISOString().split('T')[0],
-        });
-      }
+      setTransactions([newTransaction, ...transactions]);
+      setIsAdding(false);
+      setFormData({
+        amountDisplay: '',
+        description: '',
+        category: formData.type === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0],
+        type: formData.type,
+        date: new Date().toISOString().split('T')[0],
+      });
     } catch (err: any) {
       alert(`Error: ${err.message}`);
     } finally {
@@ -193,24 +201,16 @@ export default function TransactionsPage() {
     if (!rawAmount) return;
 
     try {
-      const { data, error } = await supabase
-        .from('ff_transactions')
-        .update({
-          amount: parseFloat(rawAmount),
-          description: editFormData.description,
-          category: editFormData.category,
-          type: editFormData.type,
-          date: editFormData.date,
-        })
-        .eq('id', id)
-        .select();
+      const updated = await updateTransactionUseCase.execute(id, {
+        amount: parseFloat(rawAmount),
+        description: editFormData.description,
+        category: editFormData.category,
+        type: editFormData.type,
+        date: editFormData.date,
+      });
 
-      if (error) {
-        alert(`Gagal memperbarui: ${error.message}`);
-      } else {
-        setTransactions(transactions.map(t => t.id === id ? data[0] : t));
-        setEditingId(null);
-      }
+      setTransactions(transactions.map(t => t.id === id ? updated : t));
+      setEditingId(null);
     } catch (err: any) {
       alert(`Error: ${err.message}`);
     }
@@ -231,16 +231,8 @@ export default function TransactionsPage() {
     if (!confirm('Hapus transaksi ini?')) return;
 
     try {
-      const { error } = await supabase
-        .from('ff_transactions')
-        .delete()
-        .eq('id', id);
-
-      if (error) {
-        alert(`Gagal menghapus: ${error.message}`);
-      } else {
-        setTransactions(transactions.filter(t => t.id !== id));
-      }
+      await deleteTransactionUseCase.execute(id);
+      setTransactions(transactions.filter(t => t.id !== id));
     } catch (err: any) {
       alert(`Error: ${err.message}`);
     }
@@ -301,16 +293,31 @@ export default function TransactionsPage() {
                   />
                 </div>
               </div>
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Description</label>
                 <input
                   type="text"
                   required
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(e) => handleDescriptionChange(e.target.value)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                   className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white"
                   placeholder="Beli apa?"
                 />
+                {showSuggestions && (
+                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg overflow-hidden">
+                    {suggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => selectSuggestion(suggestion)}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-zinc-700 dark:text-zinc-300 transition-colors"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Category</label>

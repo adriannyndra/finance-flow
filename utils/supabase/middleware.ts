@@ -43,17 +43,22 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // For now, let's allow access if they are on the login page or if we are 
-  // just starting out. You can re-enable strict auth later.
-  if (
-    !user &&
-    request.nextUrl.pathname.startsWith('/dashboard')
-  ) {
-    // Strict auth would redirect here, but since we use a custom table, 
-    // we'll handle session check differently later or skip for now.
-    // const url = request.nextUrl.clone()
-    // url.pathname = '/login'
-    // return NextResponse.redirect(url)
+  const pathname = request.nextUrl.pathname
+  const isProtectedRoute = pathname.startsWith('/dashboard') || 
+                           pathname.startsWith('/transactions') || 
+                           pathname.startsWith('/investments') || 
+                           pathname.startsWith('/settings')
+
+  if (!user && isProtectedRoute) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    return NextResponse.redirect(url)
+  }
+
+  if (user && (pathname === '/login' || pathname === '/')) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/dashboard'
+    return NextResponse.redirect(url)
   }
 
   // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're
