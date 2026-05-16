@@ -12,5 +12,5 @@
     - This should trigger the creation of a transaction and update the `last_generated_month`.
 
 ## 🛠️ UI/UX Improvements
-- [ ] **Key Terms Suggestion for Bills**: Implement "Key Term" suggestion logic for bill names (similar to Transactions) to avoid repetitive typing.
+- [x] **Key Terms Suggestion for Bills**: Implement "Key Term" suggestion logic for bill names (similar to Transactions) to avoid repetitive typing.
 - [ ] (Ongoing) General cleanup and refinement based on user feedback.
