@@ -74,14 +74,14 @@ export async function GET(request: NextRequest) {
     const formattedData = timestamps.map((ts: number, index: number) => ({
       date: new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       price: adjClose[index] || quotes[index],
-    })).filter((item: any) => item.price !== null && item.price !== undefined);
+    })).filter((item: { price: number | null | undefined }) => item.price !== null && item.price !== undefined);
 
     // If we have a regularMarketPrice in meta, that's often the most reliable current price
     let currentPrice = meta.regularMarketPrice;
 
     // If it's 1d and we have a list of prices, take the last one as fallback
     if (!currentPrice && formattedData.length > 0) {
-      currentPrice = formattedData[formattedData.length - 1].price;
+      currentPrice = (formattedData[formattedData.length - 1] as { price: number }).price;
     }
 
     if (range === '1d' && currentPrice) {
@@ -92,7 +92,8 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(formattedData);
-  } catch (error: any) {
+  } catch (err) {
+    const error = err as Error;
     console.error('Yahoo API Error:', error);
     return NextResponse.json({ 
       error: 'Failed to fetch stock data', 

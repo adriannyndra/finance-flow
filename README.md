@@ -84,6 +84,15 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 └── utils/            # Global infrastructure (Supabase, Auth)
 ```
 
+## 📚 Project Documentation
+
+- [Project Intelligence (Gemini)](./GEMINI.md): Team-shared conventions, security, and workflows.
+- [Clean Architecture Guide](./CLEAN_ARCHITECTURE.md): Architectural patterns and guidelines.
+- [Agent Management](./AGENTS.md): Guide for working with project agents.
+- [Claude Integration](./CLAUDE.md): Notes and workflows for Claude integration.
+- [Project Ideas](./IDEAS.md): Roadmap and feature brainstorming.
+- [Todo List](./TODO.md): Task tracking and backlog.
+
 ## 📜 License
 
 This project is private and intended for personal use.

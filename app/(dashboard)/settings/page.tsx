@@ -39,11 +39,12 @@ export default function SettingsPage() {
 
       if (error) throw error;
 
-      setMessage({ type: 'success', text: 'Password berhasil diubah!' });
+      setMessage({ type: 'success', text: 'Password successfully updated!' });
       setNewPassword('');
       
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message });
+    } catch (err) {
+      const error = err as Error;
+      setMessage({ type: 'error', text: error.message });
     } finally {
       setLoading(false);
     }
@@ -67,11 +68,12 @@ export default function SettingsPage() {
 
       setEmailMessage({ 
         type: 'success', 
-        text: 'Permintaan perubahan email berhasil! Silakan cek kotak masuk email lama AND email baru Anda untuk konfirmasi.' 
+        text: 'Email change request successful! Please check both your old AND new email inboxes for confirmation links.' 
       });
       
-    } catch (err: any) {
-      setEmailMessage({ type: 'error', text: err.message });
+    } catch (err) {
+      const error = err as Error;
+      setEmailMessage({ type: 'error', text: error.message });
     } finally {
       setEmailLoading(false);
     }
@@ -96,21 +98,21 @@ export default function SettingsPage() {
         <div className="p-6 border-b border-zinc-100 dark:border-zinc-800">
           <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
             <Mail className="w-5 h-5 text-emerald-600" />
-            Alamat Email
+            Email Address
           </h3>
-          <p className="text-sm text-zinc-500 mt-1">Ganti alamat email akun Anda.</p>
+          <p className="text-sm text-zinc-500 mt-1">Change your account email address.</p>
         </div>
         
         <div className="p-6">
           <form onSubmit={handleEmailChange} className="space-y-4 max-w-md">
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Email Baru</label>
+              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">New Email</label>
               <input
                 type="email"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
                 className="w-full px-4 py-2 rounded-lg border border-zinc-300 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                placeholder="email@baru.com"
+                placeholder="new-email@example.com"
                 required
               />
             </div>
@@ -134,14 +136,14 @@ export default function SettingsPage() {
               {emailLoading ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  Memproses...
+                  Processing...
                 </>
               ) : (
                 'Update Email'
               )}
             </button>
             <p className="text-[11px] text-zinc-500 italic">
-              * Tautan verifikasi akan dikirim ke email lama dan email baru untuk mengonfirmasi perubahan.
+              * Verification links will be sent to both old and new emails to confirm the change.
             </p>
           </form>
         </div>
@@ -152,21 +154,21 @@ export default function SettingsPage() {
         <div className="p-6 border-b border-zinc-100 dark:border-zinc-800">
           <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
             <Lock className="w-5 h-5 text-emerald-600" />
-            Keamanan Akun
+            Account Security
           </h3>
-          <p className="text-sm text-zinc-500 mt-1">Ganti password Anda secara berkala untuk menjaga keamanan akun.</p>
+          <p className="text-sm text-zinc-500 mt-1">Change your password regularly to keep your account secure.</p>
         </div>
         
         <div className="p-6">
           <form onSubmit={handlePasswordChange} className="space-y-4 max-w-md">
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Password Baru</label>
+              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">New Password</label>
               <input
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 className="w-full px-4 py-2 rounded-lg border border-zinc-300 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                placeholder="Minimal 6 karakter"
+                placeholder="At least 6 characters"
                 required
                 minLength={6}
               />
@@ -190,10 +192,10 @@ export default function SettingsPage() {
               {loading ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  Menyimpan...
+                  Saving...
                 </>
               ) : (
-                'Simpan Password Baru'
+                'Save New Password'
               )}
             </button>
           </form>
@@ -203,9 +205,9 @@ export default function SettingsPage() {
       <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 overflow-hidden">
         <div className="p-6 border-b border-zinc-100 dark:border-zinc-800">
           <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
-            Sesi
+            Session
           </h3>
-          <p className="text-sm text-zinc-500 mt-1">Keluar dari akun Anda.</p>
+          <p className="text-sm text-zinc-500 mt-1">Log out of your account.</p>
         </div>
         <div className="p-6">
           <button
@@ -213,7 +215,7 @@ export default function SettingsPage() {
             className="flex items-center gap-2 text-rose-600 font-bold hover:text-rose-500 transition-colors"
           >
             <LogOut className="w-5 h-5" />
-            Logout dari Aplikasi
+            Logout from Application
           </button>
         </div>
       </div>

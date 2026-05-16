@@ -1,4 +1,4 @@
-import { Transaction, TransactionType } from '@/core/entities';
+import { TransactionType } from '@/core/entities';
 
 export const EXPENSE_CATEGORIES = [
   "Food & Dining",

@@ -28,8 +28,9 @@ export default function UpdatePasswordPage() {
       // Password updated successfully, send them to the dashboard
       router.push('/dashboard');
       
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      const error = err as Error;
+      setError(error.message);
       setLoading(false);
     }
   };
@@ -40,14 +41,14 @@ export default function UpdatePasswordPage() {
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Reset Password</h1>
           <p className="text-zinc-500 dark:text-zinc-400 mt-2">
-            Masukkan password baru Anda
+            Enter your new password below
           </p>
         </div>
 
         <form onSubmit={handleUpdatePassword} className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
-              Password Baru
+              New Password
             </label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
@@ -57,7 +58,7 @@ export default function UpdatePasswordPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 rounded-lg border border-zinc-300 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                placeholder="Minimal 6 karakter"
+                placeholder="At least 6 characters"
                 minLength={6}
               />
             </div>
@@ -77,10 +78,10 @@ export default function UpdatePasswordPage() {
             {loading ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                Menyimpan...
+                Saving...
               </>
             ) : (
-              'Simpan Password Baru'
+              'Save New Password'
             )}
           </button>
         </form>

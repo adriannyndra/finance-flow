@@ -13,6 +13,8 @@ export default function DashboardLayout({
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: '🏠' },
     { name: 'Statistics', href: '/statistics', icon: '📊' },
+    { name: 'Budgets', href: '/budgets', icon: '🎯' },
+    { name: 'Bills', href: '/bills', icon: '🔄' },
     { name: 'Transactions', href: '/transactions', icon: '💸' },
     { name: 'Investments', href: '/investments', icon: '📈' },
     { name: 'Settings', href: '/settings', icon: '⚙️' },

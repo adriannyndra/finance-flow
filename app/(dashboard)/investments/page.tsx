@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Investment, InvestmentType } from '@/core/entities';
-import { formatIDR } from '@/core/formatters/currency';
+import { formatIDR, formatNumberInput, parseNumberInput } from '@/core/formatters/currency';
 import StockChart from '@/components/StockChart';
 import { Trash2, Filter, Search, Loader2 } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
@@ -28,23 +28,7 @@ export default function InvestmentsPage() {
     currentPrice: '',
   });
 
-  useEffect(() => {
-    const initInvestments = async () => {
-      if (userId) {
-        await fetchInvestments(userId);
-      } else {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          await fetchInvestments(user.id);
-        } else {
-          setLoading(false);
-        }
-      }
-    };
-    initInvestments();
-  }, [userId]);
-
-  const fetchInvestments = async (uid: string) => {
+  const fetchInvestments = useCallback(async (uid: string) => {
     setLoading(true);
     const { data, error } = await supabase
       .from('ff_investments')
@@ -71,7 +55,23 @@ export default function InvestmentsPage() {
       }
     }
     setLoading(false);
-  };
+  }, [supabase, selectedInvestment]);
+
+  useEffect(() => {
+    const initInvestments = async () => {
+      if (userId) {
+        await fetchInvestments(userId);
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await fetchInvestments(user.id);
+        } else {
+          setLoading(false);
+        }
+      }
+    };
+    initInvestments();
+  }, [userId, fetchInvestments, supabase.auth]);
 
   const fetchCurrentPrice = async () => {
     if (!formData.symbol) return;
@@ -81,9 +81,9 @@ export default function InvestmentsPage() {
       const data = await response.json();
       if (response.ok && data.length > 0) {
         const price = data[data.length - 1].price;
-        setFormData(prev => ({ ...prev, currentPrice: price.toString() }));
+        setFormData(prev => ({ ...prev, currentPrice: formatNumberInput(price.toFixed(0)) }));
       } else {
-        alert(`Gagal mengambil harga untuk ${formData.symbol}. Mohon cek kembali simbolnya (contoh: BBCA.JK atau BTC).`);
+        alert(`Gagal mengambil harga untuk ${formData.symbol}. Mohon cek kembali simbolnya.`);
       }
     } catch (error) {
       console.error(error);
@@ -107,9 +107,15 @@ export default function InvestmentsPage() {
     e.preventDefault();
     if (!userId) return;
 
-    const buyPrice = parseFloat(formData.buyPrice);
-    const totalAmount = parseFloat(formData.totalInvested);
+    const buyPrice = parseFloat(parseNumberInput(formData.buyPrice));
+    const totalAmount = parseFloat(parseNumberInput(formData.totalInvested));
+    const currentPrice = parseFloat(parseNumberInput(formData.currentPrice));
     const quantity = totalAmount / buyPrice;
+
+    if (isNaN(buyPrice) || isNaN(totalAmount) || isNaN(currentPrice)) {
+      alert('Mohon isi angka yang valid.');
+      return;
+    }
 
     const { data, error } = await supabase
       .from('ff_investments')
@@ -121,14 +127,14 @@ export default function InvestmentsPage() {
           type: formData.type,
           quantity: quantity,
           buy_price: buyPrice,
-          current_price: parseFloat(formData.currentPrice),
+          current_price: currentPrice,
           date: new Date().toISOString().split('T')[0],
         }
       ])
       .select();
 
     if (error) {
-      alert(`Gagal menyimpan: ${error.message}`);
+      alert(`Failed to save: ${error.message}`);
     } else {
       const newInv = data[0];
       const mappedNewInv: Investment = {
@@ -278,11 +284,10 @@ export default function InvestmentsPage() {
               <div>
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Buy Price (Avg)</label>
                 <input
-                  type="number"
-                  step="any"
+                  type="text"
                   required
                   value={formData.buyPrice}
-                  onChange={(e) => setFormData({ ...formData, buyPrice: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, buyPrice: formatNumberInput(e.target.value) })}
                   className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white"
                   placeholder="0"
                 />
@@ -290,11 +295,10 @@ export default function InvestmentsPage() {
               <div>
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Total Money Invested</label>
                 <input
-                  type="number"
-                  step="any"
+                  type="text"
                   required
                   value={formData.totalInvested}
-                  onChange={(e) => setFormData({ ...formData, totalInvested: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, totalInvested: formatNumberInput(e.target.value) })}
                   className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white"
                   placeholder="0"
                 />
@@ -304,12 +308,11 @@ export default function InvestmentsPage() {
                   Current Price {formData.type !== 'stake' && <span className="text-[10px] text-emerald-600 font-bold ml-1">(Auto-fetched)</span>}
                 </label>
                 <input
-                  type="number"
-                  step="any"
+                  type="text"
                   required
                   disabled={formData.type !== 'stake'}
                   value={formData.currentPrice}
-                  onChange={(e) => setFormData({ ...formData, currentPrice: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, currentPrice: formatNumberInput(e.target.value) })}
                   className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white disabled:bg-zinc-50 dark:disabled:bg-zinc-900/50"
                   placeholder={formData.type === 'stake' ? "0" : "Klik cari untuk isi"}
                 />
@@ -347,7 +350,7 @@ export default function InvestmentsPage() {
                 : 'bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400'
             }`}
           >
-            Semua
+            All
           </button>
           <button
             onClick={() => setFilter('stock')}
@@ -357,7 +360,7 @@ export default function InvestmentsPage() {
                 : 'bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400'
             }`}
           >
-            Saham
+            Stocks
           </button>
           <button
             onClick={() => setFilter('crypto')}
@@ -377,7 +380,7 @@ export default function InvestmentsPage() {
                 : 'bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400'
             }`}
           >
-            Lainnya
+            Others
           </button>
         </div>
 
@@ -413,7 +416,7 @@ export default function InvestmentsPage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex flex-col">
                           <span className="text-sm font-bold text-zinc-900 dark:text-zinc-50">{inv.name}</span>
-                          <span className="text-xs text-zinc-500">{inv.symbol} • {inv.type === 'stake' ? 'Lainnya' : inv.type}</span>
+                          <span className="text-xs text-zinc-500">{inv.symbol} • {inv.type === 'stake' ? 'Others' : inv.type}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-zinc-900 dark:text-zinc-50 text-right">
@@ -439,7 +442,7 @@ export default function InvestmentsPage() {
                         <button
                           onClick={(e) => deleteInvestment(inv.id, e)}
                           className="p-2 text-zinc-400 hover:text-rose-600 transition-colors"
-                          title="Hapus Aset"
+                          title="Delete Asset"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

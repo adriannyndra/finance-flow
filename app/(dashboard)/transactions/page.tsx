@@ -11,6 +11,7 @@ import {
   X, 
   Check, 
   Download, 
+  Upload,
   ChevronUp, 
   ChevronDown, 
   ChevronLeft, 
@@ -25,21 +26,38 @@ import { GetUserTransactions } from '@/features/transactions/use-cases/GetUserTr
 import { AddTransaction } from '@/features/transactions/use-cases/AddTransaction';
 import { UpdateTransaction } from '@/features/transactions/use-cases/UpdateTransaction';
 import { DeleteTransaction } from '@/features/transactions/use-cases/DeleteTransaction';
+import { ImportTransactions } from '@/features/transactions/use-cases/ImportTransactions';
 import { createClient } from '@/utils/supabase/client';
+import { CSVImporter } from '@/components/CSVImporter';
 
 const repository = new SupabaseTransactionRepository();
 const getUserTransactions = new GetUserTransactions(repository);
 const addTransactionUseCase = new AddTransaction(repository);
 const updateTransactionUseCase = new UpdateTransaction(repository);
 const deleteTransactionUseCase = new DeleteTransaction(repository);
+const importTransactionsUseCase = new ImportTransactions(repository);
 
 const ALL_CATEGORIES = [...new Set([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES])].sort();
+
+const SortIcon = ({ 
+  field, 
+  sortField, 
+  sortDirection 
+}: { 
+  field: 'date' | 'amount' | 'category'; 
+  sortField: 'date' | 'amount' | 'category';
+  sortDirection: 'asc' | 'desc';
+}) => {
+  if (sortField !== field) return <div className="w-3 h-3 text-zinc-300"><ChevronUp className="w-3 h-3" /></div>;
+  return sortDirection === 'asc' ? <ChevronUp className="w-3 h-3 text-emerald-600" /> : <ChevronDown className="w-3 h-3 text-emerald-600" />;
+};
 
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(getUserId());
 
@@ -187,8 +205,8 @@ export default function TransactionsPage() {
     }
 
     filtered.sort((a, b) => {
-      let valA: any = a[sortField];
-      let valB: any = b[sortField];
+      let valA: string | number = a[sortField];
+      let valB: string | number = b[sortField];
 
       if (sortField === 'date') {
         valA = new Date(valA).getTime();
@@ -235,7 +253,7 @@ export default function TransactionsPage() {
       setLoading(false);
     };
     initTransactions();
-  }, []);
+  }, [currentUserId, supabase.auth]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -260,8 +278,9 @@ export default function TransactionsPage() {
         type: formData.type,
         date: new Date().toISOString().split('T')[0],
       });
-    } catch (err: any) {
-      alert(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Error: ${message}`);
     } finally {
       setIsSaving(false);
     }
@@ -280,15 +299,32 @@ export default function TransactionsPage() {
       });
       setTransactions(transactions.map(t => t.id === id ? updated : t));
       setEditingId(null);
-    } catch (err: any) { alert(`Error: ${err.message}`); }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Error: ${message}`);
+    }
   };
 
   const deleteTransaction = async (id: string) => {
-    if (!confirm('Hapus transaksi ini?')) return;
+    if (!confirm('Delete this transaction?')) return;
     try {
       await deleteTransactionUseCase.execute(id);
       setTransactions(transactions.filter(t => t.id !== id));
-    } catch (err: any) { alert(`Error: ${err.message}`); }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Error: ${message}`);
+    }
+  };
+
+  const handleImport = async (data: Omit<Transaction, 'id'>[]) => {
+    if (!currentUserId) return;
+    try {
+      const imported = await importTransactionsUseCase.execute(currentUserId, data);
+      setTransactions([...imported, ...transactions]);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      throw new Error(message);
+    }
   };
 
   const exportToCSV = () => {
@@ -318,16 +354,18 @@ export default function TransactionsPage() {
     );
   }
 
-  const SortIcon = ({ field }: { field: 'date' | 'amount' | 'category' }) => {
-    if (sortField !== field) return <div className="w-3 h-3 text-zinc-300"><ChevronUp className="w-3 h-3" /></div>;
-    return sortDirection === 'asc' ? <ChevronUp className="w-3 h-3 text-emerald-600" /> : <ChevronDown className="w-3 h-3 text-emerald-600" />;
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Transactions</h2>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsImporting(true)}
+            className="flex items-center gap-2 bg-white border border-zinc-200 text-zinc-700 px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-zinc-50 transition-colors dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300"
+          >
+            <Upload className="w-4 h-4" />
+            Import CSV
+          </button>
           <button
             onClick={exportToCSV}
             disabled={processedTransactions.length === 0}
@@ -345,6 +383,13 @@ export default function TransactionsPage() {
         </div>
       </div>
 
+      {isImporting && (
+        <CSVImporter 
+          onImport={handleImport} 
+          onClose={() => setIsImporting(false)} 
+        />
+      )}
+
       {isAdding && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800">
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -353,7 +398,14 @@ export default function TransactionsPage() {
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Type</label>
                 <select
                   value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value as TransactionType })}
+                  onChange={(e) => {
+                    const newType = e.target.value as TransactionType;
+                    setFormData({ 
+                      ...formData, 
+                      type: newType,
+                      category: newType === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]
+                    });
+                  }}
                   className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
                 >
                   <option value="expense">Expense</option>
@@ -486,14 +538,14 @@ export default function TransactionsPage() {
             <thead className="bg-zinc-50 border-b border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700">
               <tr>
                 <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider cursor-pointer select-none" onClick={() => toggleSort('date')}>
-                  <div className="flex items-center gap-1">Date <SortIcon field="date" /></div>
+                  <div className="flex items-center gap-1">Date <SortIcon field="date" sortField={sortField} sortDirection={sortDirection} /></div>
                 </th>
                 <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider">Description</th>
                 <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider cursor-pointer select-none" onClick={() => toggleSort('category')}>
-                  <div className="flex items-center gap-1">Category <SortIcon field="category" /></div>
+                  <div className="flex items-center gap-1">Category <SortIcon field="category" sortField={sortField} sortDirection={sortDirection} /></div>
                 </th>
                 <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right cursor-pointer select-none" onClick={() => toggleSort('amount')}>
-                  <div className="flex items-center gap-1 justify-end">Amount <SortIcon field="amount" /></div>
+                  <div className="flex items-center gap-1 justify-end">Amount <SortIcon field="amount" sortField={sortField} sortDirection={sortDirection} /></div>
                 </th>
                 <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider text-center w-24">Actions</th>
               </tr>

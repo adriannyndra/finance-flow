@@ -72,7 +72,7 @@ export default function DashboardChart({ transactions }: DashboardChartProps) {
               ))}
             </Pie>
             <Tooltip
-              formatter={(value: any) => formatIDR(value)}
+              formatter={(value: number) => formatIDR(value)}
               contentStyle={{
                 backgroundColor: '#fff',
                 borderRadius: '12px',

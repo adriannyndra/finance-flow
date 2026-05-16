@@ -1,8 +1,6 @@
 'use client';
-
 import { useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
-import { useRouter } from 'next/navigation';
 import { Loader2, Lock, Mail } from 'lucide-react'; // Swapped User for Mail
 
 export default function LoginPage() {
@@ -12,7 +10,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null); // For success messages
-  const router = useRouter();
   const supabase = createClient();
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -43,7 +40,7 @@ export default function LoginPage() {
             password: password,
           });
           
-          if (loginError) throw new Error('Email atau password salah');
+          if (loginError) throw new Error('Invalid email or password');
           
           if (data.user) {
             document.cookie = `user_session=${data.user.id}; path=/; max-age=31536000; SameSite=Lax`;
@@ -51,8 +48,9 @@ export default function LoginPage() {
           
           window.location.href = '/dashboard';
         }
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err) {
+        const error = err as Error;
+        setError(error.message);
       } finally {
         setLoading(false);
       }
@@ -60,7 +58,7 @@ export default function LoginPage() {
 
   const handleResetPassword = async () => {
     if (!email) {
-      setError('Masukkan email Anda di atas, lalu klik Lupa Password.');
+      setError('Please enter your email above, then click Forgot Password.');
       return;
     }
     
@@ -76,7 +74,7 @@ export default function LoginPage() {
     if (error) {
       setError(error.message);
     } else {
-      setMessage('Link reset password telah dikirim ke email Anda!');
+      setMessage('Password reset link has been sent to your email!');
     }
     setLoading(false);
   };
@@ -87,7 +85,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">FinanceFlow</h1>
           <p className="text-zinc-500 dark:text-zinc-400 mt-2">
-            {isRegister ? 'Buat akun baru' : 'Login cak'}
+            {isRegister ? 'Create a new account' : 'Welcome back'}
           </p>
         </div>
 
@@ -104,7 +102,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 rounded-lg border border-zinc-300 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                placeholder="email@domain.com"
+                placeholder="email@example.com"
               />
             </div>
           </div>
@@ -120,7 +118,7 @@ export default function LoginPage() {
                   onClick={handleResetPassword}
                   className="text-xs text-emerald-600 hover:text-emerald-500 font-medium"
                 >
-                  Lupa Password?
+                  Forgot Password?
                 </button>
               )}
             </div>
@@ -132,7 +130,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 rounded-lg border border-zinc-300 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                placeholder="Minimal 6 karakter"
+                placeholder="At least 6 characters"
                 minLength={6}
               />
             </div>
@@ -157,10 +155,10 @@ export default function LoginPage() {
             {loading ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                {isRegister ? 'Sedang Mendaftar...' : 'Sedang Masuk...'}
+                {isRegister ? 'Registering...' : 'Signing in...'}
               </>
             ) : (
-              isRegister ? 'Daftar' : 'Masuk'
+              isRegister ? 'Register' : 'Sign in'
             )}
           </button>
         </form>
@@ -174,7 +172,7 @@ export default function LoginPage() {
             }}
             className="text-sm text-emerald-600 hover:text-emerald-500 font-medium"
           >
-            {isRegister ? 'Sudah punya akun? Login' : 'Belum punya akun? Daftar'}
+            {isRegister ? 'Already have an account? Sign in' : "Don't have an account? Register"}
           </button>
         </div>
       </div>

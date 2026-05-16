@@ -51,6 +51,27 @@ export class SupabaseTransactionRepository {
     };
   }
 
+  async addTransactions(userId: string, transactions: Omit<Transaction, 'id'>[]): Promise<Transaction[]> {
+    const offset = this.getOffset(userId);
+    const maskedTransactions = transactions.map(t => ({
+      ...t,
+      amount: t.amount + offset,
+      user_id: userId
+    }));
+
+    const { data, error } = await this.supabase
+      .from('ff_transactions')
+      .insert(maskedTransactions)
+      .select();
+
+    if (error) throw new Error(error.message);
+    
+    return (data || []).map(t => ({
+      ...t,
+      amount: t.amount - offset
+    }));
+  }
+
   async updateTransaction(id: string, transaction: Partial<Transaction>): Promise<Transaction> {
     // Note: We need the userId to get the offset. 
     // In your current implementation, updateTransaction only receives ID.

@@ -50,8 +50,9 @@ export default function StockChart({ symbol, name }: StockChartProps) {
         }
         
         setData(result);
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err) {
+        const error = err as Error;
+        setError(error.message);
       } finally {
         setLoading(false);
       }

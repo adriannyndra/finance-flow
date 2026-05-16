@@ -1,5 +1,7 @@
 # Clean Architecture Guidelines
 
+> **Project Context**: For an overview of the project and links to other documentation, please see [README.md](./README.md).
+
 This project follows a **Clean Architecture** approach using **Vertical Slices**. This structure decouples business logic from the presentation and infrastructure layers, ensuring high maintainability and scalability.
 
 ## Directory Structure

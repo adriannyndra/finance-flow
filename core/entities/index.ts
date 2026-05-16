@@ -27,3 +27,26 @@ export interface Investment {
   currentPrice: number;
   date: string;
 }
+
+export interface Budget {
+  id: string;
+  userId: string;
+  category: string;
+  amount: number;
+  month: string; // Format: YYYY-MM
+}
+
+export type BillFrequency = 'monthly' | 'yearly';
+
+export interface Bill {
+  id: string;
+  userId: string;
+  name: string;
+  amount: number;
+  category: string;
+  frequency: BillFrequency;
+  billing_day: number; // 1-31
+  active: boolean;
+  lastGeneratedMonth?: string; // YYYY-MM to prevent duplicate generation
+  endDate?: string; // Format: YYYY-MM-DD
+}
