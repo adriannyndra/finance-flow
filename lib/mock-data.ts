@@ -1,4 +1,4 @@
-import { Transaction, Investment } from './types';
+import { Transaction, Investment } from '@/core/entities';
 
 export const MOCK_TRANSACTIONS: Transaction[] = [
   {

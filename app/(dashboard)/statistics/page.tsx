@@ -176,7 +176,7 @@ export default function StatisticsPage() {
                   tickFormatter={(value) => `${value / 1000000}jt`}
                 />
                 <Tooltip 
-                  formatter={(value: number) => formatIDR(value)}
+                  formatter={(value: any) => formatIDR(value)}
                   contentStyle={{ borderRadius: '12px', border: '1px solid #e4e4e7' }}
                 />
                 <Legend iconType="circle" />
@@ -214,7 +214,7 @@ export default function StatisticsPage() {
                 width={120}
               />
               <Tooltip 
-                formatter={(value: number) => formatIDR(value)}
+                formatter={(value: any) => formatIDR(value)}
                 contentStyle={{ borderRadius: '12px', border: '1px solid #e4e4e7' }}
               />
               <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]}>
