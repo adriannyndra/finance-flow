@@ -7,6 +7,7 @@ import { getUserId } from '@/utils/auth/get-user-id';
 import { Loader2, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Filter } from 'lucide-react';
 import { formatIDR } from '@/core/formatters/currency';
 import DashboardChart from '@/components/DashboardChart';
+import { SupabaseTransactionRepository } from '@/features/transactions/infrastructure/SupabaseTransactionRepository';
 import {
   BarChart,
   Bar,
@@ -18,6 +19,8 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
+
+const transactionRepository = new SupabaseTransactionRepository();
 
 export default function StatisticsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -38,11 +41,7 @@ export default function StatisticsPage() {
         }
 
         if (uid) {
-          const { data } = await supabase
-            .from('ff_transactions')
-            .select('*')
-            .eq('user_id', uid)
-            .order('date', { ascending: true });
+          const data = await transactionRepository.getTransactions(uid);
           setTransactions(data || []);
         }
       } catch (error) {

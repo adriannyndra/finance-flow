@@ -16,7 +16,6 @@ import {
   ChevronLeft, 
   ChevronRight,
   Filter,
-  Search
 } from 'lucide-react';
 
 // Clean Architecture Imports
@@ -63,6 +62,14 @@ export default function TransactionsPage() {
     date: new Date().toISOString().split('T')[0],
   });
 
+  const [editFormData, setEditFormData] = useState({
+    amountDisplay: '',
+    description: '',
+    category: '',
+    type: 'expense' as TransactionType,
+    date: '',
+  });
+
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -73,7 +80,7 @@ export default function TransactionsPage() {
     return Array.from(years).sort((a, b) => b.localeCompare(a));
   }, [transactions]);
 
-  // Description suggestion logic (kept from before)
+  // Description suggestion logic
   const descriptionHistory = useMemo(() => {
     const history: Record<string, { category: string; type: TransactionType; count: number; lastUsed: number }> = {};
     const prefixCounts: Record<string, Set<string>> = {};
@@ -211,14 +218,6 @@ export default function TransactionsPage() {
     }
   };
 
-  const [editFormData, setEditFormData] = useState({
-    amountDisplay: '',
-    description: '',
-    category: '',
-    type: 'expense' as TransactionType,
-    date: '',
-  });
-
   useEffect(() => {
     const initTransactions = async () => {
       let uid = currentUserId;
@@ -268,25 +267,6 @@ export default function TransactionsPage() {
     }
   };
 
-  const exportToCSV = () => {
-    if (processedTransactions.length === 0) return;
-    const headers = ['Date', 'Description', 'Category', 'Type', 'Amount'];
-    const rows = processedTransactions.map(t => [
-      t.date,
-      `"${t.description.replace(/"/g, '""')}"`,
-      t.category,
-      t.type,
-      t.amount
-    ]);
-    const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `transactions-export.csv`);
-    link.click();
-  };
-
   const handleEditSubmit = async (id: string) => {
     const rawAmount = parseNumberInput(editFormData.amountDisplay);
     if (!rawAmount) return;
@@ -309,6 +289,25 @@ export default function TransactionsPage() {
       await deleteTransactionUseCase.execute(id);
       setTransactions(transactions.filter(t => t.id !== id));
     } catch (err: any) { alert(`Error: ${err.message}`); }
+  };
+
+  const exportToCSV = () => {
+    if (processedTransactions.length === 0) return;
+    const headers = ['Date', 'Description', 'Category', 'Type', 'Amount'];
+    const rows = processedTransactions.map(t => [
+      t.date,
+      `"${t.description.replace(/"/g, '""')}"`,
+      t.category,
+      t.type,
+      t.amount
+    ]);
+    const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `transactions-export.csv`);
+    link.click();
   };
 
   if (loading) {
@@ -421,48 +420,64 @@ export default function TransactionsPage() {
         </div>
       )}
 
-      {/* Filters */}
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-zinc-400" />
-          <span className="text-sm font-bold text-zinc-700 dark:text-zinc-300">Filters:</span>
+      {/* Filters & Rows Per Page */}
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-zinc-400" />
+            <span className="text-sm font-bold text-zinc-700 dark:text-zinc-300">Filters:</span>
+          </div>
+          
+          <select
+            value={filterCategory}
+            onChange={(e) => { setFilterCategory(e.target.value); setCurrentPage(1); }}
+            className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-medium dark:bg-zinc-800 dark:border-zinc-700 outline-none"
+          >
+            <option value="all">All Categories</option>
+            {ALL_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+          </select>
+
+          <select
+            value={filterMonth}
+            onChange={(e) => { setFilterMonth(e.target.value); setCurrentPage(1); }}
+            className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-medium dark:bg-zinc-800 dark:border-zinc-700 outline-none"
+          >
+            <option value="all">All Months</option>
+            {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map(m => (
+              <option key={m} value={m}>{new Date(2024, parseInt(m)-1).toLocaleString('default', { month: 'long' })}</option>
+            ))}
+          </select>
+
+          <select
+            value={filterYear}
+            onChange={(e) => { setFilterYear(e.target.value); setCurrentPage(1); }}
+            className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-medium dark:bg-zinc-800 dark:border-zinc-700 outline-none"
+          >
+            <option value="all">All Years</option>
+            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+
+          <button 
+            onClick={() => { setFilterCategory('all'); setFilterMonth('all'); setFilterYear('all'); setCurrentPage(1); }}
+            className="text-xs font-bold text-emerald-600 hover:text-emerald-500"
+          >
+            Reset Filters
+          </button>
         </div>
-        
-        <select
-          value={filterCategory}
-          onChange={(e) => { setFilterCategory(e.target.value); setCurrentPage(1); }}
-          className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-medium dark:bg-zinc-800 dark:border-zinc-700 outline-none"
-        >
-          <option value="all">All Categories</option>
-          {ALL_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-        </select>
 
-        <select
-          value={filterMonth}
-          onChange={(e) => { setFilterMonth(e.target.value); setCurrentPage(1); }}
-          className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-medium dark:bg-zinc-800 dark:border-zinc-700 outline-none"
-        >
-          <option value="all">All Months</option>
-          {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map(m => (
-            <option key={m} value={m}>{new Date(2024, parseInt(m)-1).toLocaleString('default', { month: 'long' })}</option>
-          ))}
-        </select>
-
-        <select
-          value={filterYear}
-          onChange={(e) => { setFilterYear(e.target.value); setCurrentPage(1); }}
-          className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-medium dark:bg-zinc-800 dark:border-zinc-700 outline-none"
-        >
-          <option value="all">All Years</option>
-          {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
-
-        <button 
-          onClick={() => { setFilterCategory('all'); setFilterMonth('all'); setFilterYear('all'); setCurrentPage(1); }}
-          className="text-xs font-bold text-emerald-600 hover:text-emerald-500"
-        >
-          Reset Filters
-        </button>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-zinc-400 uppercase">Rows:</span>
+          <select
+            value={pageSize}
+            onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+            className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-medium dark:bg-zinc-800 dark:border-zinc-700 outline-none"
+          >
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 overflow-hidden dark:bg-zinc-900 dark:border-zinc-800">
@@ -486,19 +501,77 @@ export default function TransactionsPage() {
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {paginatedTransactions.map((t) => (
                 <tr key={t.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
-                  <td className="px-6 py-4 text-sm text-zinc-500 whitespace-nowrap">{t.date}</td>
-                  <td className="px-6 py-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">{t.description}</td>
-                  <td className="px-6 py-4 text-sm text-zinc-500">
-                    <span className="px-2 py-1 bg-zinc-100 rounded-md text-xs font-medium dark:bg-zinc-800 dark:text-zinc-400">{t.category}</span>
-                  </td>
-                  <td className={`px-6 py-4 text-sm font-bold text-right whitespace-nowrap ${t.type === 'income' ? 'text-emerald-600' : 'text-zinc-900 dark:text-zinc-50'}`}>
-                    {t.type === 'income' ? '+' : '-'}{formatIDR(t.amount)}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <button onClick={() => deleteTransaction(t.id)} className="p-2 text-zinc-400 hover:text-rose-600 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  </td>
+                  {editingId === t.id ? (
+                    <>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="date"
+                          value={editFormData.date}
+                          onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })}
+                          className="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm dark:bg-zinc-800 dark:border-zinc-700"
+                        />
+                      </td>
+                      <td className="px-6 py-4">
+                        <input
+                          type="text"
+                          value={editFormData.description}
+                          onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                          className="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm dark:bg-zinc-800 dark:border-zinc-700"
+                        />
+                      </td>
+                      <td className="px-6 py-4">
+                        <select
+                          value={editFormData.category}
+                          onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
+                          className="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm dark:bg-zinc-800 dark:border-zinc-700"
+                        >
+                          {(editFormData.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <input
+                          type="text"
+                          value={editFormData.amountDisplay}
+                          onChange={(e) => setEditFormData({ ...editFormData, amountDisplay: formatNumberInput(e.target.value) })}
+                          className="w-24 rounded-md border border-zinc-300 px-2 py-1 text-sm text-right dark:bg-zinc-800 dark:border-zinc-700"
+                        />
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button onClick={() => handleEditSubmit(t.id)} className="text-emerald-600 hover:text-emerald-500 transition-colors"><Check className="w-4 h-4" /></button>
+                          <button onClick={() => setEditingId(null)} className="text-zinc-400 hover:text-rose-600 transition-colors"><X className="w-4 h-4" /></button>
+                        </div>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-6 py-4 text-sm text-zinc-500 whitespace-nowrap">{t.date}</td>
+                      <td className="px-6 py-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">{t.description}</td>
+                      <td className="px-6 py-4 text-sm text-zinc-500">
+                        <span className="px-2 py-1 bg-zinc-100 rounded-md text-xs font-medium dark:bg-zinc-800 dark:text-zinc-400">{t.category}</span>
+                      </td>
+                      <td className={`px-6 py-4 text-sm font-bold text-right whitespace-nowrap ${t.type === 'income' ? 'text-emerald-600' : 'text-zinc-900 dark:text-zinc-50'}`}>
+                        {t.type === 'income' ? '+' : '-'}{formatIDR(t.amount)}
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => {
+                            setEditingId(t.id);
+                            setEditFormData({
+                              amountDisplay: formatNumberInput(t.amount.toString()),
+                              description: t.description,
+                              category: t.category,
+                              type: t.type,
+                              date: t.date,
+                            });
+                          }} className="p-2 text-zinc-400 hover:text-emerald-600 transition-colors" title="Edit"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => deleteTransaction(t.id)} className="p-2 text-zinc-400 hover:text-rose-600 transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))}
               {paginatedTransactions.length === 0 && (
@@ -508,13 +581,43 @@ export default function TransactionsPage() {
           </table>
         </div>
 
-        {/* Pagination */}
+        {/* Pagination Controls */}
         {totalPages > 1 && (
-          <div className="px-6 py-4 bg-zinc-50 border-t border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 flex items-center justify-between">
-            <div className="text-xs text-zinc-500 font-medium">Page {currentPage} of {totalPages} ({processedTransactions.length} total)</div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded-lg border border-zinc-200 bg-white disabled:opacity-50 dark:bg-zinc-900 dark:border-zinc-800"><ChevronLeft className="w-4 h-4" /></button>
-              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 rounded-lg border border-zinc-200 bg-white disabled:opacity-50 dark:bg-zinc-900 dark:border-zinc-800"><ChevronRight className="w-4 h-4" /></button>
+          <div className="px-6 py-4 bg-zinc-50 border-t border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-xs text-zinc-500 font-medium">
+              Page {currentPage} of {totalPages} ({processedTransactions.length} total)
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase">Go to:</span>
+                <select
+                  value={currentPage}
+                  onChange={(e) => setCurrentPage(Number(e.target.value))}
+                  className="bg-white border border-zinc-200 rounded-lg px-2 py-1 text-xs font-medium dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 outline-none"
+                >
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                    <option key={p} value={p}>Page {p}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
+                  disabled={currentPage === 1} 
+                  className="p-1.5 rounded-lg border border-zinc-200 bg-white disabled:opacity-50 hover:bg-zinc-50 transition-colors dark:bg-zinc-900 dark:border-zinc-800"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} 
+                  disabled={currentPage === totalPages} 
+                  className="p-1.5 rounded-lg border border-zinc-200 bg-white disabled:opacity-50 hover:bg-zinc-50 transition-colors dark:bg-zinc-900 dark:border-zinc-800"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         )}

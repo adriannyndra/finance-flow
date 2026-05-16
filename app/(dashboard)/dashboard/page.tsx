@@ -19,6 +19,9 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import DashboardChart from '@/components/DashboardChart';
+import { SupabaseTransactionRepository } from '@/features/transactions/infrastructure/SupabaseTransactionRepository';
+
+const transactionRepository = new SupabaseTransactionRepository();
 
 export default function DashboardPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -62,11 +65,7 @@ export default function DashboardPage() {
         setUserName(displayName);
       }
 
-      const { data: transData } = await supabase
-        .from('ff_transactions')
-        .select('*')
-        .eq('user_id', uid)
-        .order('date', { ascending: false });
+      const transData = await transactionRepository.getTransactions(uid);
 
       const { data: investData } = await supabase
         .from('ff_investments')
