@@ -18,6 +18,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import Link from 'next/link';
+import DashboardChart from '@/components/DashboardChart';
 
 export default function DashboardPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -198,111 +199,105 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Enhanced Transaction Table */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">Aktivitas Terakhir (1 Bulan Terakhir)</h3>
-          
-          <div className="flex items-center gap-3">
-            <select 
-              value={pageSize} 
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="bg-white border border-zinc-200 rounded-lg px-2 py-1.5 text-xs font-medium dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 outline-none focus:ring-1 focus:ring-emerald-500"
-            >
-              <option value={10}>10 Baris</option>
-              <option value={50}>50 Baris</option>
-              <option value={100}>100 Baris</option>
-            </select>
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-1">
+          <DashboardChart transactions={transactions} />
         </div>
-
-        <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 overflow-hidden dark:bg-zinc-900 dark:border-zinc-800">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-zinc-50 border-b border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700">
-                <tr>
-                  <th 
-                    className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider cursor-pointer group select-none"
-                    onClick={toggleSort}
-                  >
-                    <div className="flex items-center gap-1 group-hover:text-zinc-900 dark:group-hover:text-zinc-300 transition-colors">
-                      Tanggal
-                      <div className="flex flex-col">
-                        <ChevronUp className={`w-3 h-3 -mb-1 ${sortOrder === 'oldest' ? 'text-emerald-600' : 'text-zinc-300'}`} />
-                        <ChevronDown className={`w-3 h-3 ${sortOrder === 'latest' ? 'text-emerald-600' : 'text-zinc-300'}`} />
-                      </div>
-                    </div>
-                  </th>
-                  <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider">Deskripsi</th>
-                  <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider">Kategori</th>
-                  <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right">Jumlah</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                {paginatedTransactions.length > 0 ? (
-                  paginatedTransactions.map((t) => (
-                    <tr key={t.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
-                      <td className="px-6 py-4 text-sm text-zinc-500 whitespace-nowrap">{t.date}</td>
-                      <td className="px-6 py-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">{t.description}</td>
-                      <td className="px-6 py-4 text-sm text-zinc-500">
-                        <span className="px-2 py-1 bg-zinc-100 rounded-md text-xs font-medium dark:bg-zinc-800 dark:text-zinc-400">
-                          {t.category}
-                        </span>
-                      </td>
-                      <td className={`px-6 py-4 text-sm font-bold text-right whitespace-nowrap ${
-                        t.type === 'income' ? 'text-emerald-600' : 'text-zinc-900 dark:text-zinc-50'
-                      }`}>
-                        {t.type === 'income' ? '+' : '-'}{formatIDR(t.amount)}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={4} className="p-8 text-center text-zinc-500">Belum ada transaksi dalam 1 bulan terakhir.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+        <div className="lg:col-span-2 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">Aktivitas Terakhir (1 Bulan Terakhir)</h3>
+            
+            <div className="flex items-center gap-3">
+              <select 
+                value={pageSize} 
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="bg-white border border-zinc-200 rounded-lg px-2 py-1.5 text-xs font-medium dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 outline-none focus:ring-1 focus:ring-emerald-500"
+              >
+                <option value={10}>10 Baris</option>
+                <option value={50}>50 Baris</option>
+                <option value={100}>100 Baris</option>
+              </select>
+            </div>
           </div>
 
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="px-6 py-4 bg-zinc-50 border-t border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 flex items-center justify-between">
-              <div className="text-xs text-zinc-500 font-medium">
-                Halaman {currentPage} dari {totalPages}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => goToPage(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  className="p-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-600 disabled:opacity-50 hover:bg-zinc-50 transition-colors dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                
-                <select
-                  value={currentPage}
-                  onChange={(e) => goToPage(Number(e.target.value))}
-                  className="bg-white border border-zinc-200 rounded-lg px-2 py-1 text-xs font-medium dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 outline-none"
-                >
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                    <option key={p} value={p}>Hal {p}</option>
-                  ))}
-                </select>
-
-                <button
-                  onClick={() => goToPage(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                  className="p-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-600 disabled:opacity-50 hover:bg-zinc-50 transition-colors dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
+          <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 overflow-hidden dark:bg-zinc-900 dark:border-zinc-800">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-zinc-50 border-b border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700">
+                  <tr>
+                    <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider">
+                      Tanggal
+                    </th>
+                    <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider">Deskripsi</th>
+                    <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider">Kategori</th>
+                    <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right">Jumlah</th>
+                  </tr>
+                </thead>                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {paginatedTransactions.length > 0 ? (
+                    paginatedTransactions.map((t) => (
+                      <tr key={t.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                        <td className="px-6 py-4 text-sm text-zinc-500 whitespace-nowrap">{t.date}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">{t.description}</td>
+                        <td className="px-6 py-4 text-sm text-zinc-500">
+                          <span className="px-2 py-1 bg-zinc-100 rounded-md text-xs font-medium dark:bg-zinc-800 dark:text-zinc-400">
+                            {t.category}
+                          </span>
+                        </td>
+                        <td className={`px-6 py-4 text-sm font-bold text-right whitespace-nowrap ${
+                          t.type === 'income' ? 'text-emerald-600' : 'text-zinc-900 dark:text-zinc-50'
+                        }`}>
+                          {t.type === 'income' ? '+' : '-'}{formatIDR(t.amount)}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="p-8 text-center text-zinc-500">Belum ada transaksi dalam 1 bulan terakhir.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-          )}
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="px-6 py-4 bg-zinc-50 border-t border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 flex items-center justify-between">
+                <div className="text-xs text-zinc-500 font-medium">
+                  Halaman {currentPage} dari {totalPages}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-600 disabled:opacity-50 hover:bg-zinc-50 transition-colors dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  
+                  <select
+                    value={currentPage}
+                    onChange={(e) => goToPage(Number(e.target.value))}
+                    className="bg-white border border-zinc-200 rounded-lg px-2 py-1 text-xs font-medium dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 outline-none"
+                  >
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                      <option key={p} value={p}>Hal {p}</option>
+                    ))}
+                  </select>
+
+                  <button
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="p-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-600 disabled:opacity-50 hover:bg-zinc-50 transition-colors dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -4,7 +4,20 @@ import { useState, useEffect, useMemo } from 'react';
 import { Transaction, TransactionType } from '@/core/entities';
 import { formatIDR, formatNumberInput, parseNumberInput } from '@/core/formatters/currency';
 import { getUserId } from '@/utils/auth/get-user-id';
-import { Loader2, Trash2, Edit2, X, Check } from 'lucide-react';
+import { 
+  Loader2, 
+  Trash2, 
+  Edit2, 
+  X, 
+  Check, 
+  Download, 
+  ChevronUp, 
+  ChevronDown, 
+  ChevronLeft, 
+  ChevronRight,
+  Filter,
+  Search
+} from 'lucide-react';
 
 // Clean Architecture Imports
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/features/transactions/domain/types';
@@ -15,12 +28,13 @@ import { UpdateTransaction } from '@/features/transactions/use-cases/UpdateTrans
 import { DeleteTransaction } from '@/features/transactions/use-cases/DeleteTransaction';
 import { createClient } from '@/utils/supabase/client';
 
-// Repository and Use Case initialization (ideally this would be via DI/Provider)
 const repository = new SupabaseTransactionRepository();
 const getUserTransactions = new GetUserTransactions(repository);
 const addTransactionUseCase = new AddTransaction(repository);
 const updateTransactionUseCase = new UpdateTransaction(repository);
 const deleteTransactionUseCase = new DeleteTransaction(repository);
+
+const ALL_CATEGORIES = [...new Set([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES])].sort();
 
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -29,6 +43,15 @@ export default function TransactionsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(getUserId());
+
+  // Filter & Sort State
+  const [sortField, setSortField] = useState<'date' | 'amount' | 'category'>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [filterMonth, setFilterMonth] = useState<string>('all'); // 01-12
+  const [filterYear, setFilterYear] = useState<string>('all');
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const supabase = createClient();
 
@@ -43,26 +66,87 @@ export default function TransactionsPage() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // Derived state for description history
+  // Derived years for filter
+  const availableYears = useMemo(() => {
+    const years = new Set<string>();
+    transactions.forEach(t => years.add(t.date.split('-')[0]));
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [transactions]);
+
+  // Description suggestion logic (kept from before)
   const descriptionHistory = useMemo(() => {
-    const history: Record<string, { category: string; type: TransactionType }> = {};
-    // Process from oldest to newest so the most recent ones win
-    [...transactions].reverse().forEach(t => {
-      history[t.description.toLowerCase()] = { 
-        category: t.category, 
-        type: t.type 
-      };
+    const history: Record<string, { category: string; type: TransactionType; count: number; lastUsed: number }> = {};
+    const prefixCounts: Record<string, Set<string>> = {};
+
+    transactions.forEach((t) => {
+      const desc = t.description.trim();
+      const lowerDesc = desc.toLowerCase();
+      const time = new Date(t.date).getTime();
+      
+      if (!history[lowerDesc] || time > history[lowerDesc].lastUsed) {
+        history[lowerDesc] = { 
+          category: t.category, 
+          type: t.type, 
+          count: (history[lowerDesc]?.count || 0) + 1,
+          lastUsed: time
+        };
+      } else {
+        history[lowerDesc].count++;
+      }
+
+      const words = desc.split(/\s+/);
+      if (words.length >= 2) {
+        const p2 = words.slice(0, 2).join(' ').toLowerCase();
+        if (!prefixCounts[p2]) prefixCounts[p2] = new Set();
+        prefixCounts[p2].add(lowerDesc);
+      }
+      if (words.length >= 3) {
+        const p3 = words.slice(0, 3).join(' ').toLowerCase();
+        if (!prefixCounts[p3]) prefixCounts[p3] = new Set();
+        prefixCounts[p3].add(lowerDesc);
+      }
     });
-    return history;
+
+    const suggestionsMap: Record<string, { category: string; type: TransactionType; isKeyTerm: boolean; lastUsed: number }> = {};
+    Object.entries(history).forEach(([desc, data]) => {
+      suggestionsMap[desc] = { ...data, isKeyTerm: false };
+    });
+
+    Object.entries(prefixCounts).forEach(([prefix, fullDescs]) => {
+      if (fullDescs.size > 1) {
+        let latestTime = -1;
+        let bestCategory = '';
+        let bestType: TransactionType = 'expense';
+        fullDescs.forEach(fd => {
+          if (history[fd].lastUsed > latestTime) {
+            latestTime = history[fd].lastUsed;
+            bestCategory = history[fd].category;
+            bestType = history[fd].type;
+          }
+        });
+        if (!suggestionsMap[prefix] || latestTime > suggestionsMap[prefix].lastUsed) {
+          suggestionsMap[prefix] = { category: bestCategory, type: bestType, isKeyTerm: true, lastUsed: latestTime };
+        }
+      }
+    });
+    return suggestionsMap;
   }, [transactions]);
 
   const handleDescriptionChange = (val: string) => {
     setFormData({ ...formData, description: val });
-    
     if (val.length > 1) {
-      const filtered = Object.keys(descriptionHistory)
-        .filter(desc => desc.includes(val.toLowerCase()))
-        .slice(0, 5); // Limit to 5 suggestions
+      const valLower = val.toLowerCase();
+      const filtered = Object.entries(descriptionHistory)
+        .filter(([desc]) => desc.includes(valLower))
+        .sort((a, b) => {
+          const aStarts = a[0].startsWith(valLower);
+          const bStarts = b[0].startsWith(valLower);
+          if (aStarts !== bStarts) return aStarts ? -1 : 1;
+          if (a[1].isKeyTerm !== b[1].isKeyTerm) return a[1].isKeyTerm ? -1 : 1;
+          return b[1].lastUsed - a[1].lastUsed;
+        })
+        .slice(0, 5)
+        .map(([desc]) => desc);
       setSuggestions(filtered);
       setShowSuggestions(filtered.length > 0);
     } else {
@@ -71,26 +155,60 @@ export default function TransactionsPage() {
   };
 
   const selectSuggestion = (suggestion: string) => {
-    const historyItem = Object.entries(descriptionHistory).find(
-      ([desc]) => desc === suggestion.toLowerCase()
-    );
-
-    const originalDesc = transactions.find(
-        t => t.description.toLowerCase() === suggestion.toLowerCase()
-    )?.description || suggestion;
-
-    if (historyItem) {
-      const { category, type } = historyItem[1];
-      setFormData({
-        ...formData,
-        description: originalDesc,
-        category: category,
-        type: type
-      });
+    const data = descriptionHistory[suggestion.toLowerCase()];
+    if (data) {
+      const originalDesc = transactions.find(t => t.description.toLowerCase() === suggestion.toLowerCase())?.description || suggestion;
+      setFormData({ ...formData, description: originalDesc, category: data.category, type: data.type });
     } else {
-      setFormData({ ...formData, description: originalDesc });
+      setFormData({ ...formData, description: suggestion });
     }
     setShowSuggestions(false);
+  };
+
+  // Filtered & Sorted Data
+  const processedTransactions = useMemo(() => {
+    let filtered = [...transactions];
+
+    if (filterCategory !== 'all') {
+      filtered = filtered.filter(t => t.category === filterCategory);
+    }
+    if (filterMonth !== 'all') {
+      filtered = filtered.filter(t => t.date.split('-')[1] === filterMonth);
+    }
+    if (filterYear !== 'all') {
+      filtered = filtered.filter(t => t.date.split('-')[0] === filterYear);
+    }
+
+    filtered.sort((a, b) => {
+      let valA: any = a[sortField];
+      let valB: any = b[sortField];
+
+      if (sortField === 'date') {
+        valA = new Date(valA).getTime();
+        valB = new Date(valB).getTime();
+      }
+
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return filtered;
+  }, [transactions, filterCategory, filterMonth, filterYear, sortField, sortDirection]);
+
+  const totalPages = Math.ceil(processedTransactions.length / pageSize);
+  const paginatedTransactions = processedTransactions.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
+  const toggleSort = (field: 'date' | 'amount' | 'category') => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+    }
   };
 
   const [editFormData, setEditFormData] = useState({
@@ -100,22 +218,6 @@ export default function TransactionsPage() {
     type: 'expense' as TransactionType,
     date: '',
   });
-
-  // Reset category when type changes in main form
-  useEffect(() => {
-    if (!isAdding) return;
-    const categories = formData.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
-    setFormData(prev => ({ ...prev, category: categories[0] }));
-  }, [formData.type, isAdding]);
-
-  // Reset category when type changes in edit form
-  useEffect(() => {
-    if (!editingId) return;
-    const categories = editFormData.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
-    if (!categories.includes(editFormData.category)) {
-        setEditFormData(prev => ({ ...prev, category: categories[0] }));
-    }
-  }, [editFormData.type, editingId]);
 
   useEffect(() => {
     const initTransactions = async () => {
@@ -127,59 +229,29 @@ export default function TransactionsPage() {
           setCurrentUserId(user.id);
         }
       }
-
       if (uid) {
-        await fetchTransactions(uid);
-      } else {
-        setLoading(false);
+        const data = await getUserTransactions.execute(uid);
+        setTransactions(data);
       }
+      setLoading(false);
     };
     initTransactions();
   }, []);
 
-  const fetchTransactions = async (uid: string) => {
-    setLoading(true);
-    try {
-      const data = await getUserTransactions.execute(uid);
-      setTransactions(data);
-    } catch (err) {
-      console.error('Fetch error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    let uid = currentUserId;
-    if (!uid) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        uid = user.id;
-        setCurrentUserId(user.id);
-      } else {
-        alert("Sesi berakhir. Silakan login kembali.");
-        return;
-      }
-    }
-
     const rawAmount = parseNumberInput(formData.amountDisplay);
-    if (!rawAmount) {
-      alert("Masukkan jumlah nominal.");
-      return;
-    }
+    if (!rawAmount || !currentUserId) return;
 
     setIsSaving(true);
     try {
-      const newTransaction = await addTransactionUseCase.execute(uid, {
+      const newTransaction = await addTransactionUseCase.execute(currentUserId, {
         amount: parseFloat(rawAmount),
         description: formData.description,
         category: formData.category,
         type: formData.type,
         date: formData.date,
       });
-
       setTransactions([newTransaction, ...transactions]);
       setIsAdding(false);
       setFormData({
@@ -196,10 +268,28 @@ export default function TransactionsPage() {
     }
   };
 
+  const exportToCSV = () => {
+    if (processedTransactions.length === 0) return;
+    const headers = ['Date', 'Description', 'Category', 'Type', 'Amount'];
+    const rows = processedTransactions.map(t => [
+      t.date,
+      `"${t.description.replace(/"/g, '""')}"`,
+      t.category,
+      t.type,
+      t.amount
+    ]);
+    const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `transactions-export.csv`);
+    link.click();
+  };
+
   const handleEditSubmit = async (id: string) => {
     const rawAmount = parseNumberInput(editFormData.amountDisplay);
     if (!rawAmount) return;
-
     try {
       const updated = await updateTransactionUseCase.execute(id, {
         amount: parseFloat(rawAmount),
@@ -208,34 +298,17 @@ export default function TransactionsPage() {
         type: editFormData.type,
         date: editFormData.date,
       });
-
       setTransactions(transactions.map(t => t.id === id ? updated : t));
       setEditingId(null);
-    } catch (err: any) {
-      alert(`Error: ${err.message}`);
-    }
-  };
-
-  const startEditing = (t: Transaction) => {
-    setEditingId(t.id);
-    setEditFormData({
-      amountDisplay: formatNumberInput(t.amount.toString()),
-      description: t.description,
-      category: t.category,
-      type: t.type,
-      date: t.date,
-    });
+    } catch (err: any) { alert(`Error: ${err.message}`); }
   };
 
   const deleteTransaction = async (id: string) => {
     if (!confirm('Hapus transaksi ini?')) return;
-
     try {
       await deleteTransactionUseCase.execute(id);
       setTransactions(transactions.filter(t => t.id !== id));
-    } catch (err: any) {
-      alert(`Error: ${err.message}`);
-    }
+    } catch (err: any) { alert(`Error: ${err.message}`); }
   };
 
   if (loading) {
@@ -246,52 +319,58 @@ export default function TransactionsPage() {
     );
   }
 
-  const currentCategories = formData.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
-  const editCategories = editFormData.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const SortIcon = ({ field }: { field: 'date' | 'amount' | 'category' }) => {
+    if (sortField !== field) return <div className="w-3 h-3 text-zinc-300"><ChevronUp className="w-3 h-3" /></div>;
+    return sortDirection === 'asc' ? <ChevronUp className="w-3 h-3 text-emerald-600" /> : <ChevronDown className="w-3 h-3 text-emerald-600" />;
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Transactions</h2>
-        <button
-          onClick={() => {
-            setIsAdding(!isAdding);
-            setEditingId(null);
-          }}
-          className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-emerald-500 transition-colors"
-        >
-          {isAdding ? 'Cancel' : '+ Add New'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportToCSV}
+            disabled={processedTransactions.length === 0}
+            className="flex items-center gap-2 bg-white border border-zinc-200 text-zinc-700 px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-zinc-50 transition-colors disabled:opacity-50 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300"
+          >
+            <Download className="w-4 h-4" />
+            Export CSV
+          </button>
+          <button
+            onClick={() => { setIsAdding(!isAdding); setEditingId(null); }}
+            className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-emerald-500 transition-colors"
+          >
+            {isAdding ? 'Cancel' : '+ Add New'}
+          </button>
+        </div>
       </div>
 
       {isAdding && (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 animate-in fade-in slide-in-from-top-4 duration-300">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800">
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Type</label>
                 <select
                   value={formData.type}
                   onChange={(e) => setFormData({ ...formData, type: e.target.value as TransactionType })}
-                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white"
+                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
                 >
-                  <option value="expense">Expense / Pengeluaran</option>
-                  <option value="income">Income / Pemasukan</option>
+                  <option value="expense">Expense</option>
+                  <option value="income">Income</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Amount (IDR)</label>
-                <div className="relative mt-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">Rp</span>
-                  <input
-                    type="text"
-                    required
-                    value={formData.amountDisplay}
-                    onChange={(e) => setFormData({ ...formData, amountDisplay: formatNumberInput(e.target.value) })}
-                    className="block w-full rounded-lg border border-zinc-300 pl-10 pr-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white"
-                    placeholder="0"
-                  />
-                </div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Amount (Rp)</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.amountDisplay}
+                  onChange={(e) => setFormData({ ...formData, amountDisplay: formatNumberInput(e.target.value) })}
+                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
+                  placeholder="0"
+                />
               </div>
               <div className="relative">
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Description</label>
@@ -301,20 +380,13 @@ export default function TransactionsPage() {
                   value={formData.description}
                   onChange={(e) => handleDescriptionChange(e.target.value)}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white"
+                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
                   placeholder="Beli apa?"
                 />
                 {showSuggestions && (
-                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg overflow-hidden">
-                    {suggestions.map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        type="button"
-                        onClick={() => selectSuggestion(suggestion)}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-zinc-700 dark:text-zinc-300 transition-colors"
-                      >
-                        {suggestion}
-                      </button>
+                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-800 border border-zinc-200 rounded-lg shadow-lg">
+                    {suggestions.map(s => (
+                      <button key={s} type="button" onClick={() => selectSuggestion(s)} className="w-full text-left px-4 py-2 text-sm hover:bg-emerald-50 dark:hover:bg-zinc-700">{s}</button>
                     ))}
                   </div>
                 )}
@@ -324,9 +396,9 @@ export default function TransactionsPage() {
                 <select
                   value={formData.category}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white"
+                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
                 >
-                  {currentCategories.map(cat => (
+                  {(formData.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
@@ -338,151 +410,114 @@ export default function TransactionsPage() {
                   required
                   value={formData.date}
                   onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white"
+                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
                 />
               </div>
             </div>
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="w-full bg-emerald-600 text-white py-2 rounded-lg font-bold hover:bg-emerald-500 transition-colors mt-2 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                'Save Transaction'
-              )}
+            <button type="submit" disabled={isSaving} className="w-full bg-emerald-600 text-white py-2 rounded-lg font-bold hover:bg-emerald-500 transition-colors disabled:opacity-50">
+              {isSaving ? 'Saving...' : 'Save Transaction'}
             </button>
           </form>
         </div>
       )}
+
+      {/* Filters */}
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4 text-zinc-400" />
+          <span className="text-sm font-bold text-zinc-700 dark:text-zinc-300">Filters:</span>
+        </div>
+        
+        <select
+          value={filterCategory}
+          onChange={(e) => { setFilterCategory(e.target.value); setCurrentPage(1); }}
+          className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-medium dark:bg-zinc-800 dark:border-zinc-700 outline-none"
+        >
+          <option value="all">All Categories</option>
+          {ALL_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+        </select>
+
+        <select
+          value={filterMonth}
+          onChange={(e) => { setFilterMonth(e.target.value); setCurrentPage(1); }}
+          className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-medium dark:bg-zinc-800 dark:border-zinc-700 outline-none"
+        >
+          <option value="all">All Months</option>
+          {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map(m => (
+            <option key={m} value={m}>{new Date(2024, parseInt(m)-1).toLocaleString('default', { month: 'long' })}</option>
+          ))}
+        </select>
+
+        <select
+          value={filterYear}
+          onChange={(e) => { setFilterYear(e.target.value); setCurrentPage(1); }}
+          className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-medium dark:bg-zinc-800 dark:border-zinc-700 outline-none"
+        >
+          <option value="all">All Years</option>
+          {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+
+        <button 
+          onClick={() => { setFilterCategory('all'); setFilterMonth('all'); setFilterYear('all'); setCurrentPage(1); }}
+          className="text-xs font-bold text-emerald-600 hover:text-emerald-500"
+        >
+          Reset Filters
+        </button>
+      </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 overflow-hidden dark:bg-zinc-900 dark:border-zinc-800">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-zinc-50 border-b border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700">
               <tr>
-                <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider">Date</th>
+                <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider cursor-pointer select-none" onClick={() => toggleSort('date')}>
+                  <div className="flex items-center gap-1">Date <SortIcon field="date" /></div>
+                </th>
                 <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider">Description</th>
-                <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider">Category</th>
-                <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right">Amount</th>
+                <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider cursor-pointer select-none" onClick={() => toggleSort('category')}>
+                  <div className="flex items-center gap-1">Category <SortIcon field="category" /></div>
+                </th>
+                <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right cursor-pointer select-none" onClick={() => toggleSort('amount')}>
+                  <div className="flex items-center gap-1 justify-end">Amount <SortIcon field="amount" /></div>
+                </th>
                 <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider text-center w-24">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {transactions.map((t) => (
-                <tr key={t.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group">
-                  {editingId === t.id ? (
-                    <>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <input
-                          type="date"
-                          value={editFormData.date}
-                          onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })}
-                          className="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm dark:bg-zinc-800 dark:border-zinc-700 dark:text-white"
-                        />
-                      </td>
-                      <td className="px-6 py-4">
-                        <input
-                          type="text"
-                          value={editFormData.description}
-                          onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
-                          className="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm dark:bg-zinc-800 dark:border-zinc-700 dark:text-white"
-                        />
-                      </td>
-                      <td className="px-6 py-4">
-                        <select
-                          value={editFormData.category}
-                          onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
-                          className="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm dark:bg-zinc-800 dark:border-zinc-700 dark:text-white"
-                        >
-                          {editCategories.map(cat => (
-                            <option key={cat} value={cat}>{cat}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex flex-col items-end gap-1">
-                          <select
-                            value={editFormData.type}
-                            onChange={(e) => setEditFormData({ ...editFormData, type: e.target.value as TransactionType })}
-                            className="text-xs rounded border border-zinc-300 px-1 dark:bg-zinc-800 dark:border-zinc-700"
-                          >
-                            <option value="expense">Expense</option>
-                            <option value="income">Income</option>
-                          </select>
-                          <div className="relative">
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400">Rp</span>
-                            <input
-                              type="text"
-                              value={editFormData.amountDisplay}
-                              onChange={(e) => setEditFormData({ ...editFormData, amountDisplay: formatNumberInput(e.target.value) })}
-                              className="w-32 rounded-md border border-zinc-300 pl-6 pr-2 py-1 text-sm text-right dark:bg-zinc-800 dark:border-zinc-700 dark:text-white"
-                            />
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => handleEditSubmit(t.id)}
-                            className="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg hover:bg-emerald-200 transition-colors"
-                            title="Simpan"
-                          >
-                            <Check className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => setEditingId(null)}
-                            className="p-1.5 bg-zinc-100 text-zinc-600 rounded-lg hover:bg-zinc-200 transition-colors"
-                            title="Batal"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td className="px-6 py-4 text-sm text-zinc-500 whitespace-nowrap">{t.date}</td>
-                      <td className="px-6 py-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">{t.description}</td>
-                      <td className="px-6 py-4 text-sm text-zinc-500">
-                        <span className="px-2 py-1 bg-zinc-100 rounded-md text-xs font-medium dark:bg-zinc-800 dark:text-zinc-400">
-                          {t.category}
-                        </span>
-                      </td>
-                      <td className={`px-6 py-4 text-sm font-bold text-right whitespace-nowrap ${
-                        t.type === 'income' ? 'text-emerald-600' : 'text-zinc-900 dark:text-zinc-50'
-                      }`}>
-                        {t.type === 'income' ? '+' : '-'}{formatIDR(t.amount)}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => startEditing(t)}
-                            className="p-2 text-zinc-400 hover:text-emerald-600 transition-colors"
-                            title="Edit Transaksi"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => deleteTransaction(t.id)}
-                            className="p-2 text-zinc-400 hover:text-rose-600 transition-colors"
-                            title="Hapus Transaksi"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </>
-                  )}
+              {paginatedTransactions.map((t) => (
+                <tr key={t.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                  <td className="px-6 py-4 text-sm text-zinc-500 whitespace-nowrap">{t.date}</td>
+                  <td className="px-6 py-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">{t.description}</td>
+                  <td className="px-6 py-4 text-sm text-zinc-500">
+                    <span className="px-2 py-1 bg-zinc-100 rounded-md text-xs font-medium dark:bg-zinc-800 dark:text-zinc-400">{t.category}</span>
+                  </td>
+                  <td className={`px-6 py-4 text-sm font-bold text-right whitespace-nowrap ${t.type === 'income' ? 'text-emerald-600' : 'text-zinc-900 dark:text-zinc-50'}`}>
+                    {t.type === 'income' ? '+' : '-'}{formatIDR(t.amount)}
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <button onClick={() => deleteTransaction(t.id)} className="p-2 text-zinc-400 hover:text-rose-600 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  </td>
                 </tr>
               ))}
+              {paginatedTransactions.length === 0 && (
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-zinc-500 text-sm font-medium">No transactions found matching your filters.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="px-6 py-4 bg-zinc-50 border-t border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 flex items-center justify-between">
+            <div className="text-xs text-zinc-500 font-medium">Page {currentPage} of {totalPages} ({processedTransactions.length} total)</div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded-lg border border-zinc-200 bg-white disabled:opacity-50 dark:bg-zinc-900 dark:border-zinc-800"><ChevronLeft className="w-4 h-4" /></button>
+              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 rounded-lg border border-zinc-200 bg-white disabled:opacity-50 dark:bg-zinc-900 dark:border-zinc-800"><ChevronRight className="w-4 h-4" /></button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
