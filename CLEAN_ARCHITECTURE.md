@@ -35,7 +35,9 @@ Houses global, third-party integrations and configurations (e.g., Supabase clien
 5.  **Connect Presentation**: In your Next.js page (`app/goals/page.tsx`), initialize the repository/use-cases and call them in `useEffect` or event handlers.
 
 ## Rules for Agents (LLMs)
-- **NEVER** import from `supabase` directly in the `app/` directory (Presentation Layer).
-- **NEVER** put business logic (calculations, complex filters) inside a React component. Move it to a **Use Case**.
-- **ALWAYS** use the repository pattern in the `infrastructure/` layer of a feature to handle external data.
+- **NEVER** import from `supabase` directly in the `app/` directory (Presentation Layer). All fetching MUST go through a Repository.
+- **NEVER** put business logic (calculations, complex filters) inside a React component. Move it to a **Use Case** or a derived state using `useMemo`.
+- **ALWAYS** use the repository pattern in the `infrastructure/` layer to handle external data. This is where centralized data transformation (like **Masking/Unmasking**) must happen.
 - **ALWAYS** check `core/formatters` before writing a new formatting utility.
+- **CONSISTENCY**: Ensure all pages (Dashboard, Statistics, etc.) use the same Repository logic to ensure data consistency (e.g., across masked values).
+

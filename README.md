@@ -7,8 +7,12 @@ A modern personal finance management application built with **Next.js**, **Supab
 ## 🚀 Features
 
 - **Dashboard**: Overview of your financial health with interactive charts.
-- **Transactions**: Track income and expenses with ease.
+- **Statistics**: Deep-dive analysis with monthly cash flow and category breakdown charts.
+- **Transactions**: Track income and expenses with advanced filtering, sorting, and pagination.
 - **Investments**: Monitor your portfolio and stock history.
+- **CSV Export**: Download your transaction history for offline analysis.
+- **Privacy Masking**: Built-in user-derived masking to keep financial amounts obscured in the database.
+- **Smart Suggestions**: Description suggestions that automatically pick up key terms from your history.
 - **Authentication**: Secure login and password management via Supabase.
 - **Responsive Design**: Optimized for both desktop and mobile devices.
 
