@@ -4,12 +4,12 @@
 
 ---
 
-## 🔄 Bills & Automation Refactor
-- [x] **Bills Summarization on Dashboard**: Add a "Upcoming Bills" section on the homepage showing total bills due for the next month.
-- [x] **Conditional Transaction Generation**: Refactor `ProcessBills` logic. Do not automatically add `[Recur]` transactions to the history unless it's for the current month AND the user has confirmed it (or it's marked as paid).
-- [x] **"Mark as Paid" Feature**:
-    - Add a "Confirm Payment" or "Mark as Paid" button to each bill card in the `/bills` page.
-    - This should trigger the creation of a transaction and update the `last_generated_month`.
+## 📊 Bill Visualization & Tracking
+- [ ] **Database Migration**: Add `total_amount` column to `ff_bills` table.
+- [ ] **Frontend Calculation**: Implement logic to calculate/auto-fill `total_amount` based on `monthly_amount`, `end_date`, and `billing_day`.
+- [ ] **Progress Visualization**: Add progress bar to Bill cards displaying completion percentage based on payments made vs. total amount.
+- [ ] **Bill Details Modal/Page**: Enable clicking on a bill card to view historical payment details.
+- [ ] **Date Handling**: Implement automatic 1-month `end_date` default for new bills with options to clear or customize.
 
 ## 🛠️ UI/UX Improvements
 - [x] **Key Terms Suggestion for Bills**: Implement "Key Term" suggestion logic for bill names (similar to Transactions) to avoid repetitive typing.
