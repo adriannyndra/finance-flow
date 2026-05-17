@@ -16,6 +16,13 @@ To prevent casual data peeking in the database (Supabase), financial amounts acr
   - No need for external secret management (`.env`) for the salt logic itself.
 - **Mandate**: ANY new feature involving financial amounts MUST implement this masking/unmasking logic in its repository layer.
 
+### Bill Header-Detail Architecture
+The bills system uses a Header (`ff_bills`) and Detail (`ff_bill_items`) architecture to support complex financial obligations.
+- **Table Syncing**: For `installment` types, individual item changes (`ff_bill_items`) automatically synchronize with the `total_amount` in the header if they are currently in sync.
+- **Tenure Logic**: Initial installment schedules are generated using a `Tenure` (months) parameter which splits the `total_amount` across a set of pending items.
+- **Automation Isolation**: The `ProcessBills` automation ONLY generates transactions for `recurring` type bills. `installment` and `one-time` bills are manual-settlement only to prevent duplicate entries.
+- **Extended Masking**: The `total_amount` column in `ff_bills` and the `amount` column in `ff_bill_items` are BOTH protected by the User-Derived Offset logic.
+
 ## 📝 User Experience
 
 ### Key Term Suggestion Logic
