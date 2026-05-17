@@ -103,6 +103,21 @@ Use an **Open Finance Aggregator** to handle the complex "SNAP" (Standar Nasiona
 
 ---
 
+## 8. 🎯 Wishlist & Savings Goals (Budget Integration)
+**Goal**: Allow users to set aside specific savings targets for items or goals within the Budget tab.
+
+### 🛠 Technical Approach
+- **Data Model**: Extend the existing `Budget` entity with a `wishlist` field or array.
+- **Input Methods**:
+  - **Manual**: User inputs item name and target price.
+  - **Metadata Scraping**: User pastes a product URL; the system fetches metadata (like `og:price:amount`) to auto-populate the target price.
+- **Progress Tracking**: 
+  - Visualize progress (e.g., progress bar) as users "allocate" funds toward these targets.
+  - No complex third-party APIs or automated price monitoring at this stage (keep it manual/client-side).
+- **Future Growth**: Potential for alerts when prices change or automated savings transfers if banking integration is added.
+
+---
+
 ## 🗂 Feature Status
 | Feature | Priority | Complexity | Status |
 | :--- | :--- | :--- | :--- |
@@ -110,6 +125,7 @@ Use an **Open Finance Aggregator** to handle the complex "SNAP" (Standar Nasiona
 | Recurring Bills| High | Medium | ✅ Implemented |
 | CSV Importer | Medium | Medium | ✅ Implemented |
 | CSV Exporter | Medium | Low | ✅ Implemented |
+| Wishlist & Savings Goals| Medium | Medium | 💡 Idea |
 | Language Localization (i18n) | Medium | Medium | 💡 Idea |
 | Customizable Layout | High | High | 💡 Idea |
 | Advanced Privacy | Medium | Medium | 💡 Idea |
