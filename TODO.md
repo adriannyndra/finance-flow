@@ -5,7 +5,7 @@
 ---
 
 ## 📊 Bill Visualization & Tracking
-- [ ] **Database Migration**: Add `total_amount` column to `ff_bills` table.
+- [x] **Database Migration**: Add `total_amount` column to `ff_bills` table.
 - [ ] **Frontend Calculation**: Implement logic to calculate/auto-fill `total_amount` based on `monthly_amount`, `end_date`, and `billing_day`.
 - [ ] **Progress Visualization**: Add progress bar to Bill cards displaying completion percentage based on payments made vs. total amount.
 - [ ] **Bill Details Modal/Page**: Enable clicking on a bill card to view historical payment details.
