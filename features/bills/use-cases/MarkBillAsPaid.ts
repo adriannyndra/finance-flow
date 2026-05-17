@@ -8,14 +8,14 @@ export class MarkBillAsPaid {
     private transactionRepository: SupabaseTransactionRepository
   ) {}
 
-  async execute(userId: string, bill: Bill): Promise<Transaction> {
-    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+  async execute(userId: string, bill: Bill, targetMonth?: string): Promise<Transaction> {
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const resolvedMonth = targetMonth || today.slice(0, 7); // Use targetMonth or default to current month
 
     // 1. Create the transaction
     const transaction = await this.transactionRepository.addTransaction(userId, {
       amount: bill.amount,
-      description: `[Paid] ${bill.name}`,
+      description: `[Paid] ${bill.name} (${resolvedMonth})`,
       category: bill.category,
       type: 'expense',
       date: today
@@ -33,7 +33,7 @@ export class MarkBillAsPaid {
 
     // 3. Update the bill's last generated month
     await this.billRepository.updateBill(bill.id, {
-      lastGeneratedMonth: currentMonth
+      lastGeneratedMonth: resolvedMonth
     });
 
     return transaction;

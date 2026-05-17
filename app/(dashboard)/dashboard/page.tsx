@@ -328,20 +328,37 @@ export default function DashboardPage() {
           ) : (
             <div className="space-y-4">
               {displayBills.length > 0 ? (
-                displayBills.slice(0, 5).map((bill) => (
-                  <div key={bill.id} className="flex items-center justify-between p-3 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center text-amber-600 dark:bg-amber-900/20 dark:text-emerald-400">
-                        <CreditCard className="w-4 h-4 text-amber-600" />
+                displayBills.slice(0, 5).map((bill) => {
+                  // Calculate progress for bills with totalAmount
+                  // We need to fetch items for this, but currently dashboard doesn't fetch bill items.
+                  // For now, let's at least show the bar if totalAmount exists, even if 0% progress.
+                  // Ideally we should fetch bill items in fetchDashboardData.
+                  return (
+                    <div key={bill.id} className="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center text-amber-600 dark:bg-amber-900/20 dark:text-emerald-400">
+                            <CreditCard className="w-4 h-4 text-amber-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-zinc-900 dark:text-zinc-50">{bill.name}</p>
+                            <p className="text-[10px] text-zinc-500 uppercase">Due date: {bill.billing_day} {new Date().toLocaleString('en-US', { month: 'short' })}</p>
+                          </div>
+                        </div>
+                        <p className="text-sm font-bold text-zinc-900 dark:text-zinc-50">{formatIDR(bill.amount)}</p>
                       </div>
-                      <div>
-                        <p className="text-sm font-bold text-zinc-900 dark:text-zinc-50">{bill.name}</p>
-                        <p className="text-[10px] text-zinc-500 uppercase">Due date: {bill.billing_day} {new Date().toLocaleString('en-US', { month: 'short' })}</p>
-                      </div>
+                      
+                      {bill.totalAmount !== undefined && (
+                        <div className="h-1 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden mt-2">
+                          <div 
+                            className={`h-full transition-all duration-500 ${bill.billType === 'installment' ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                            style={{ width: '0%' }} // Placeholder since we don't have items here yet
+                          />
+                        </div>
+                      )}
                     </div>
-                    <p className="text-sm font-bold text-zinc-900 dark:text-zinc-50">{formatIDR(bill.amount)}</p>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="py-8 text-center">
                   <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />

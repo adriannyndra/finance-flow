@@ -6,25 +6,28 @@ A modern personal finance management application built with **Next.js**, **Supab
 
 ## 🚀 Features
 
-- **Dashboard**: Overview of your financial health with interactive charts.
-- **Statistics**: Deep-dive analysis with monthly cash flow and category breakdown charts.
-- **Transactions**: Track income and expenses with advanced filtering, sorting, and pagination.
-- **Investments**: Monitor your portfolio and stock history.
-- **CSV Export**: Download your transaction history for offline analysis.
+- **Advanced Bill Management**:
+  - **Archiving**: Fully paid bills automatically move to a dedicated history section.
+  - **Roadmaps**: View and manage detailed payment schedules for installments and subscriptions.
+  - **Pre-payment**: Clear future obligations ahead of time with smart "Early Bird" payment logic.
+  - **Manual Solver**: Smart form buttons to auto-calculate totals, amounts, or deadlines.
+- **Deep Analytics**:
+  - **Bill Breakdown**: Analyze spending by Type (Subscription vs. Debt) or Category.
+  - **Historical Reports**: Stats include both active and archived commitments for complete reporting.
+  - **Cash Flow**: Track monthly income vs. expenses over time.
+- **Transactions**: Track income and expenses with advanced filtering, sorting, and Lucide-powered UI.
+- **Investments**: Monitor your portfolio and stock history with interactive charts.
 - **Privacy Masking**: Built-in user-derived masking to keep financial amounts obscured in the database.
-- **Smart Suggestions**: Description suggestions that automatically pick up key terms from your history.
-- **Authentication**: Secure login and password management via Supabase.
-- **Responsive Design**: Optimized for both desktop and mobile devices.
+- **Responsive Design**: Minimalist, mobile-first navigation with icon-only bottom bar.
 
 ## 🛠️ Tech Stack
 
-- **Framework**: [Next.js 16 (App Router)](https://nextjs.org/)
+- **Framework**: [Next.js 15+ (App Router)](https://nextjs.org/)
 - **UI Library**: [React 19](https://react.dev/)
 - **Styling**: [Tailwind CSS 4](https://tailwindcss.com/)
 - **Database & Auth**: [Supabase](https://supabase.com/)
 - **Charts**: [Recharts](https://recharts.org/)
 - **Icons**: [Lucide React](https://lucide.dev/)
-- **Financial Data**: [Yahoo Finance2](https://github.com/gadicc/node-yahoo-finance2)
 
 ## 🏗️ Architecture
 
@@ -38,38 +41,6 @@ This project strictly adheres to **Clean Architecture** using **Vertical Slices*
 
 For more details, see [CLEAN_ARCHITECTURE.md](./CLEAN_ARCHITECTURE.md).
 
-## 🏁 Getting Started
-
-### Prerequisites
-- Node.js 20+
-- npm / yarn / pnpm
-
-### Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/your-username/finance-manager.git
-   cd finance-manager
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Set up environment variables:
-   Copy `.example.env.local` to `.env.local` and fill in your Supabase credentials.
-   ```bash
-   cp .example.env.local .env.local
-   ```
-
-4. Run the development server:
-   ```bash
-   npm run dev
-   ```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
 ## 📂 Project Structure
 
 ```text
@@ -77,11 +48,10 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 ├── components/       # Shared UI components
 ├── core/             # Shared domain entities & formatters
 ├── features/         # Vertical slices (Domain, Use Cases, Infrastructure)
-│   ├── dashboard/
-│   └── transactions/
-├── lib/              # Mock data and shared libraries
-├── public/           # Static assets
-└── utils/            # Global infrastructure (Supabase, Auth)
+│   ├── bills/        # Archiving, Roadmaps, Pre-payment logic
+│   ├── budgets/      # Thresholds and progress tracking
+│   └── transactions/ # Core ledger and categorization
+├── utils/            # Global infrastructure (Supabase, Auth)
 ```
 
 ## 📚 Project Documentation
@@ -89,8 +59,6 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 - [Project Intelligence (Gemini)](./GEMINI.md): Team-shared conventions, security, and workflows.
 - [Clean Architecture Guide](./CLEAN_ARCHITECTURE.md): Architectural patterns and guidelines.
 - [Agent Management](./AGENTS.md): Guide for working with project agents.
-- [Claude Integration](./CLAUDE.md): Notes and workflows for Claude integration.
-- [Project Ideas](./IDEAS.md): Roadmap and feature brainstorming.
 - [Todo List](./TODO.md): Task tracking and backlog.
 
 ## 📜 License

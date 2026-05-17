@@ -108,12 +108,33 @@ export default function StatisticsPage() {
     }).sort((a, b) => b.Budget - a.Budget);
   }, [budgets, transactions, currentMonthStr]);
 
-  // Section 2: Bills Logic (Key Terms)
+  // Section 2: Bills Logic (Analytics)
   const billAnalysisData = useMemo(() => {
+    // Note: We include ALL bills (active + archived) for complete historical overview
+    if (billGrouping === 'type') {
+        const totals: Record<string, number> = {
+            'recurring': 0,
+            'installment': 0,
+            'one-time': 0
+        };
+        bills.forEach(b => {
+            totals[b.billType] = (totals[b.billType] || 0) + b.amount;
+        });
+        
+        const labels: Record<string, string> = {
+            'recurring': 'Subscription',
+            'installment': 'Installment',
+            'one-time': 'One-time'
+        };
+
+        return Object.entries(totals)
+            .map(([key, value]) => ({ name: labels[key], value }))
+            .sort((a, b) => b.value - a.value);
+    }
+
     if (billGrouping === 'category') {
       const totals: Record<string, number> = {};
       bills.forEach(b => {
-        if (!b.active) return;
         totals[b.category] = (totals[b.category] || 0) + b.amount;
       });
       return Object.entries(totals)
@@ -124,9 +145,7 @@ export default function StatisticsPage() {
     // Key Terms grouping
     const termsMap: Record<string, number> = {};
     bills.forEach(b => {
-      if (!b.active) return;
       const words = b.name.split(' ');
-      // Key term is first 2 words (e.g. "Gopay Pinjam")
       const term = words.slice(0, 2).join(' ');
       termsMap[term] = (termsMap[term] || 0) + b.amount;
     });
@@ -296,6 +315,12 @@ export default function StatisticsPage() {
                 className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${billGrouping === 'term' ? 'bg-white shadow-sm text-amber-600 dark:bg-zinc-700' : 'text-zinc-500'}`}
               >
                 Key Terms
+              </button>
+              <button 
+                onClick={() => setBillGrouping('type')}
+                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${billGrouping === 'type' ? 'bg-white shadow-sm text-amber-600 dark:bg-zinc-700' : 'text-zinc-500'}`}
+              >
+                Type
               </button>
               <button 
                 onClick={() => setBillGrouping('category')}

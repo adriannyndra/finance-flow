@@ -32,6 +32,14 @@ export class AddBill {
         });
         allocatedTotal += itemAmount;
       }
+    } else if (newBill.billType === 'one-time' && newBill.endDate) {
+      // For one-time bills, create a single pending item for the due date
+      await this.repository.addBillItem(userId, {
+        billId: newBill.id,
+        amount: newBill.amount,
+        dueDate: newBill.endDate,
+        status: 'pending'
+      });
     }
 
     return newBill;

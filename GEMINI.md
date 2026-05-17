@@ -10,28 +10,7 @@ To prevent casual data peeking in the database (Supabase), financial amounts acr
 - **Logic**: A numeric salt is calculated from the user's UUID.
   - `Masked Amount = Actual Amount + Salt`
   - `Actual Amount = Masked Amount - Salt`
-- **Benefits**:
-  - Unique salt per user (User A's 1M looks different from User B's 1M).
-  - Preserves **Sorting** compatibility in the database since the salt is constant for a given user.
-  - No need for external secret management (`.env`) for the salt logic itself.
 - **Mandate**: ANY new feature involving financial amounts MUST implement this masking/unmasking logic in its repository layer.
-
-### Bill Header-Detail Architecture
-The bills system uses a Header (`ff_bills`) and Detail (`ff_bill_items`) architecture to support complex financial obligations.
-- **Table Syncing**: For `installment` types, individual item changes (`ff_bill_items`) automatically synchronize with the `total_amount` in the header if they are currently in sync.
-- **Tenure Logic**: Initial installment schedules are generated using a `Tenure` (months) parameter which splits the `total_amount` across a set of pending items.
-- **Automation Isolation**: The `ProcessBills` automation ONLY generates transactions for `recurring` type bills. `installment` and `one-time` bills are manual-settlement only to prevent duplicate entries.
-- **Extended Masking**: The `total_amount` column in `ff_bills` and the `amount` column in `ff_bill_items` are BOTH protected by the User-Derived Offset logic.
-
-## 📝 User Experience
-
-### Key Term Suggestion Logic
-The transaction description input uses an advanced suggestion algorithm that prioritizes "Key Terms" over exact history.
-- **Location**: `app/(dashboard)/transactions/page.tsx` (`descriptionHistory` useMemo)
-- **Logic**:
-  - Analyzes the first 2 and 3 words of every past transaction.
-  - If a prefix appears in multiple different transactions (e.g., "PTPT Hadiah ..."), it is flagged as a **Key Term**.
-  - Key Terms are suggested at the top of the list to keep the UI clean and efficient.
 
 ## ⚙️ Automation
 
@@ -40,22 +19,42 @@ Active bills are automatically converted into transactions for the **current mon
 - **Location**: `features/bills/use-cases/ProcessBills.ts`
 - **Trigger**: Called on the **Dashboard** page load.
 - **Logic**: 
-  - Checks if a bill is active and not expired (`endDate`).
-  - **Monthly Isolation**: Only checks the current YYYY-MM.
+  - **Type Filtering**: ONLY processes bills where `billType === 'recurring'`.
   - **Billing Day Trigger**: Only generates if `today's date >= billing_day`.
   - **Duplicate Prevention**: Updates `lastGeneratedMonth` on the bill to ensure once-per-month creation.
-  - **Prefix**: Creates a transaction with `[Recur]` prefix.
+
+### Bill Archiving System
+The system automatically manages the lifecycle of a bill to keep the active list clean.
+- **Auto-Archive**: Bills are considered "Completed" when `totalPaid >= totalAmount`.
+- **UI Separation**: Completed bills are filtered out of the main sections and moved to a "History" view.
+- **Muted Styling**: Archived bills use grayscale/muted styles with line-through names to indicate they are no longer active obligations.
+
+## 📝 User Experience
+
+### Smart Triangle Logic (Bills Form)
+The Bill Add/Edit form uses manual "Refresh" buttons to solve for missing financial data.
+- **Logic**: Treats Amount, Total Goal, and End Date as interdependent.
+- **Manual Control**: Users click a refresh icon next to a field to calculate it based on the other two.
+- **Units**: Progress for subscriptions is tracked in **Months** (`X / Y Mo`), while installments track **Currency**.
+
+### Next-Month Pre-payment
+Users can clear their future obligations ahead of time when they receive their paycheck.
+- **Shift Logic**: Once the current month is paid, the primary action button dynamically shifts to **"Pay for [Next Month]"**.
+- **Tagged Transactions**: Pre-paid transactions are explicitly tagged with the target period, e.g., `[Paid] Netflix (2026-06)`.
+
+### Navigation UI (Mobile-First)
+The bottom navigation bar has been simplified for a cleaner appearance.
+- **Change**: Text labels under icons have been removed.
+- **Interaction**: Icons use the `title` attribute for accessibility and hover hints.
 
 ## 📊 Analytics
 
-### Key Term Analytics (Bills)
-The Statistics page groups bills by "Key Terms" to provide a cleaner breakdown than category-only views.
-- **Location**: `app/(dashboard)/statistics/page.tsx` (`billAnalysisData` useMemo)
-- **Logic**: Splits the bill name by spaces and takes the **first 2 words** (e.g., "Gopay Pinjam #1" and "Gopay Pinjam #2" both become "Gopay Pinjam").
-- **Usage**: A toggle allows switching between this "Key Terms" view and the standard "Category" view.
+### Bill Type Analytics
+The Statistics page provides a high-level breakdown of financial commitments.
+- **Grouping**: Bills can be grouped by **Type** (Subscription vs. Installment vs. One-time).
+- **Historical Context**: The analysis includes **Archived** bills to ensure historical debt/spending is accurately represented in long-term reports.
 
 ### Centralized Data Fetching
 Even for read-only pages like **Dashboard** and **Statistics**, data MUST be fetched via the relevant Repository (e.g., `SupabaseTransactionRepository`).
 - **Reason**: To ensure the **Unmasking** logic is applied consistently across the whole app.
-- Direct Supabase calls in `app/` will result in incorrect (masked) values being displayed.
 - **Mandate**: ANY new feature involving financial amounts MUST implement this masking/unmasking logic in its repository layer.

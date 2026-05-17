@@ -4,17 +4,17 @@
 
 ---
 
-## 📊 Bill Visualization & Tracking
-- [x] **Database Migration**: Add `total_amount` column and `bill_type` to `ff_bills`; create `ff_bill_items` table.
-- [x] **Frontend Calculation**: Implement tenure-based split logic and bidirectional total debt synchronization.
-- [x] **Progress Visualization**: Add progress bar to Bill cards displaying completion percentage based on payments made vs. total amount.
-- [x] **Bill Details Modal/Page**: Implement "Roadmap" modal to view and manage individual payment items.
-- [x] **Date Handling**: Handle specific deadline dates for one-time bills and tenure schedules.
-- [x] **Manual Items**: Allow adding/editing/deleting individual bill items within a debt schedule.
+## 📊 Bill Management Refinements
+- [ ] **Mismatch Resolution**: Improve the "Mismatch detected" UI in Bill cards to offer a "Re-sync" or "Auto-fix" option for installment schedules.
+- [ ] **End Date Buffer**: Add a "Buffer" month option when auto-calculating End Dates to account for interest or variable billing cycles.
+- [ ] **Quick Reconcile All**: Add a global button at the top of the Bills page to reconcile history for ALL bills at once.
 
 ## 🛠️ UI/UX Improvements
-- [x] **Professional Icons**: Replaced emojis with Lucide icons in sidebar and mobile navigation.
-- [x] **Minimalist Mobile Nav**: Removed text labels from bottom navigation for cleaner mobile view.
-- [x] **Key Terms Suggestion for Bills**: Implement "Key Term" suggestion logic for bill names (similar to Transactions) to avoid repetitive typing.
-- [x] **Categorized View**: Sorted bills into Subscriptions, Installments, and One-time sections.
-- [ ] (Ongoing) General cleanup and refinement based on user feedback.
+- [ ] **Monthly Savings KPI**: Add a card to the Dashboard/Statistics showing (Income - Expense - Bills Paid) for the current month.
+- [ ] **Investment Details**: Enable clicking on an investment to see price history chart (similar to Transactions history).
+- [ ] **Global Search**: Add a command-palette style search (Ctrl+K) to quickly jump to transactions or bills.
+- [ ] (Ongoing) General CSS cleanup for mobile-first responsiveness.
+
+## 🧪 Testing & Reliability
+- [ ] **Validation Logic**: Add Zod schemas for Repository inputs to prevent invalid data from reaching Supabase.
+- [ ] **Error Boundaries**: Implement React Error Boundaries for major dashboard widgets.

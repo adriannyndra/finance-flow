@@ -53,6 +53,7 @@ export default function BillsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [userId, setUserId] = useState<string | null>(getUserId());
   const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   const currentMonthStr = new Date().toISOString().slice(0, 7);
 
@@ -70,17 +71,29 @@ export default function BillsPage() {
     }
   };
 
-  const handleMarkAsPaid = async (bill: Bill) => {
-    if (!userId || !confirm(`Mark ${bill.name} as paid for this month?`)) return;
+  const handleMarkAsPaid = async (bill: Bill, specificMonth?: string) => {
+    const targetMonth = specificMonth || currentMonthStr;
+    const monthName = new Date(targetMonth + '-01').toLocaleString('en-US', { month: 'long' });
+    
+    if (!userId || !confirm(`Mark ${bill.name} as paid for ${monthName}?`)) return;
     try {
-      await markBillAsPaidUseCase.execute(userId, bill);
-      setBills(bills.map(b => b.id === bill.id ? { ...b, lastGeneratedMonth: currentMonthStr } : b));
+      await markBillAsPaidUseCase.execute(userId, bill, targetMonth);
+      setBills(bills.map(b => b.id === bill.id ? { ...b, lastGeneratedMonth: targetMonth } : b));
       fetchBillItems(userId);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       alert(`Error: ${message}`);
     }
   };
+
+  const getNextMonthStr = () => {
+    const date = new Date();
+    date.setMonth(date.getMonth() + 1);
+    return date.toISOString().slice(0, 7);
+  };
+
+  const nextMonthStr = getNextMonthStr();
+  const nextMonthName = new Date(nextMonthStr + '-01').toLocaleString('en-US', { month: 'short' });
 
   const handlePayItem = async (bill: Bill, item: BillItem) => {
     if (!userId || !confirm(`Pay this installment for ${item.dueDate}?`)) return;
@@ -108,6 +121,47 @@ export default function BillsPage() {
     billing_day: 1,
     endDate: '',
   });
+
+  const solveForAmount = () => {
+    const totalStr = parseNumberInput(formData.totalAmountDisplay);
+    const totalNum = totalStr ? parseFloat(totalStr) : 0;
+    const months = getMonthsUntilEnd();
+    if (totalNum > 0 && months > 0) {
+        const solvedAmount = Math.floor(totalNum / months);
+        setFormData(prev => ({ ...prev, amountDisplay: formatNumberInput(solvedAmount.toString()) }));
+    }
+  };
+
+  const solveForTotal = () => {
+    const amountStr = parseNumberInput(formData.amountDisplay);
+    const amountNum = amountStr ? parseFloat(amountStr) : 0;
+    const months = getMonthsUntilEnd();
+    if (amountNum > 0 && months > 0) {
+        const solvedTotal = amountNum * months;
+        setFormData(prev => ({ ...prev, totalAmountDisplay: formatNumberInput(solvedTotal.toString()) }));
+    }
+  };
+
+  const solveForEndDate = () => {
+    const amountStr = parseNumberInput(formData.amountDisplay);
+    const totalStr = parseNumberInput(formData.totalAmountDisplay);
+    const amountNum = amountStr ? parseFloat(amountStr) : 0;
+    const totalNum = totalStr ? parseFloat(totalStr) : 0;
+    if (amountNum > 0 && totalNum > 0) {
+        const solvedMonths = Math.ceil(totalNum / amountNum);
+        const now = new Date();
+        const solvedEnd = new Date(now.getFullYear(), now.getMonth() + solvedMonths, formData.billing_day);
+        setFormData(prev => ({ ...prev, endDate: solvedEnd.toISOString().split('T')[0] }));
+    }
+  };
+
+  const getMonthsUntilEnd = () => {
+      if (!formData.endDate) return 0;
+      const end = new Date(formData.endDate);
+      const now = new Date();
+      const diff = (end.getFullYear() - now.getFullYear()) * 12 + (end.getMonth() - now.getMonth());
+      return diff > 0 ? diff : 0;
+  };
 
   useEffect(() => {
     const init = async () => {
@@ -152,9 +206,6 @@ export default function BillsPage() {
     const totalAmountStr = parseNumberInput(formData.totalAmountDisplay);
     if (!userId) return;
 
-    // Validation:
-    // For installments, we need totalAmount and tenure
-    // For others, we need amount
     if (formData.billType === 'installment' && !totalAmountStr) return alert('Total Debt is required for installments');
     if (formData.billType !== 'installment' && !amountStr) return alert('Amount is required');
 
@@ -178,7 +229,7 @@ export default function BillsPage() {
           billData.billing_day = formData.billing_day;
       }
 
-      if (formData.billType === 'installment' && totalAmount) {
+      if (totalAmount) {
           billData.totalAmount = parseFloat(totalAmount);
       }
 
@@ -336,15 +387,67 @@ export default function BillsPage() {
     }
   };
 
+  const handleReconcile = async (bill: Bill) => {
+    if (!userId) return;
+    setLoading(true);
+    try {
+      const transactions = await transactionRepo.getTransactions(userId);
+      const items = billItems[bill.id] || [];
+      const existingTxIds = new Set(items.map(i => i.transactionId).filter(Boolean));
+      
+      const matches = transactions.filter(t => 
+        (t.description.includes(`[Paid] ${bill.name}`) || t.description.includes(`[Recur] ${bill.name}`)) &&
+        Math.abs(t.amount - bill.amount) < 1 &&
+        !existingTxIds.has(t.id)
+      );
+
+      if (matches.length === 0) {
+        alert('No new matching transactions found with correct amount.');
+        return;
+      }
+
+      if (!confirm(`Found ${matches.length} matching payments. Link them to this bill's history?`)) return;
+
+      for (const tx of matches) {
+        await repository.addBillItem(userId, {
+          billId: bill.id,
+          amount: tx.amount,
+          dueDate: tx.date,
+          status: 'paid',
+          paidAt: tx.date,
+          transactionId: tx.id
+        });
+      }
+
+      await fetchBillItems(userId);
+      alert(`Successfully linked ${matches.length} payments.`);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const selectedBill = bills.find(b => b.id === selectedBillId);
   const selectedItems = selectedBillId ? billItems[selectedBillId] || [] : [];
   const totalItemsAmount = selectedItems.reduce((sum, i) => sum + i.amount, 0);
   const unallocatedAmount = selectedBill?.totalAmount ? selectedBill.totalAmount - totalItemsAmount : 0;
 
+  // Archive Logic: Filter completed bills
+  const processedBills = bills.map(bill => {
+      const items = billItems[bill.id] || [];
+      const totalPaid = items.filter(i => i.status === 'paid').reduce((sum, i) => sum + i.amount, 0);
+      const isCompleted = bill.totalAmount !== undefined && bill.totalAmount > 0 && totalPaid >= (bill.totalAmount - 1);
+      return { ...bill, isCompleted };
+  });
+
+  const activeBills = processedBills.filter(b => !b.isCompleted);
+  const completedBills = processedBills.filter(b => b.isCompleted);
+
   const groupedBills: Record<BillType, Bill[]> = {
-    recurring: bills.filter(b => b.billType === 'recurring'),
-    installment: bills.filter(b => b.billType === 'installment'),
-    'one-time': bills.filter(b => b.billType === 'one-time'),
+    recurring: activeBills.filter(b => b.billType === 'recurring'),
+    installment: activeBills.filter(b => b.billType === 'installment'),
+    'one-time': activeBills.filter(b => b.billType === 'one-time'),
   };
 
   const sections = [
@@ -368,16 +471,25 @@ export default function BillsPage() {
           <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Bills & Installments</h2>
           <p className="text-zinc-500 dark:text-zinc-400">Manage recurring payments, debt installments, and one-time bills.</p>
         </div>
-        <button
-          onClick={() => {
-            setIsAdding(!isAdding);
-            if (isAdding) setEditingId(null);
-          }}
-          className="bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900 px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:opacity-90 transition-all flex items-center gap-2"
-        >
-          {isAdding ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-          {isAdding ? 'Cancel' : 'Add Bill'}
-        </button>
+        <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowArchived(!showArchived)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all border ${showArchived ? 'bg-zinc-100 border-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100' : 'bg-white border-zinc-200 text-zinc-500 hover:bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800 dark:hover:bg-zinc-800'}`}
+            >
+              <History className="w-4 h-4" />
+              {showArchived ? 'Active Bills' : `History (${completedBills.length})`}
+            </button>
+            <button
+              onClick={() => {
+                setIsAdding(!isAdding);
+                if (isAdding) setEditingId(null);
+              }}
+              className="bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900 px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:opacity-90 transition-all flex items-center gap-2"
+            >
+              {isAdding ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              {isAdding ? 'Cancel' : 'Add Bill'}
+            </button>
+        </div>
       </div>
 
       {isAdding && (
@@ -409,44 +521,51 @@ export default function BillsPage() {
                 </select>
               </div>
               
-              {formData.billType === 'installment' ? (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Total Debt Amount</label>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  {formData.billType === 'installment' ? 'Total Debt Amount' : 'Total Goal/Contract (Optional)'}
+                </label>
+                <div className="flex gap-2">
                     <input
                       type="text"
-                      required
+                      required={formData.billType === 'installment'}
                       value={formData.totalAmountDisplay}
                       onChange={(e) => setFormData({ ...formData, totalAmountDisplay: formatNumberInput(e.target.value) })}
-                      className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 font-bold text-emerald-600"
+                      className={`mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 font-bold ${formData.billType === 'installment' ? 'text-amber-600' : 'text-emerald-600'}`}
                       placeholder="Total amount"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Tenure (Months)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      required
-                      readOnly={!!editingId}
-                      value={formData.tenure}
-                      onChange={(e) => setFormData({ ...formData, tenure: parseInt(e.target.value) })}
-                      className={`mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 ${editingId ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    />
-                    {editingId && <p className="text-[10px] text-zinc-500 mt-1">Tenure cannot be changed once created.</p>}
-                  </div>
-                </>
+                    <button type="button" onClick={solveForTotal} className="mt-1 p-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500" title="Calculate Total (Amount * Time)"><RefreshCw className="w-4 h-4" /></button>
+                </div>
+              </div>
+
+              {formData.billType === 'installment' ? (
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Tenure (Months)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    readOnly={!!editingId}
+                    value={formData.tenure}
+                    onChange={(e) => setFormData({ ...formData, tenure: parseInt(e.target.value) })}
+                    className={`mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 ${editingId ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  />
+                  {editingId && <p className="text-[10px] text-zinc-500 mt-1">Tenure cannot be changed once created.</p>}
+                </div>
               ) : (
                 <div>
                   <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Amount (Rp)</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.amountDisplay}
-                    onChange={(e) => setFormData({ ...formData, amountDisplay: formatNumberInput(e.target.value) })}
-                    className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
-                    placeholder="0"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                        type="text"
+                        required
+                        value={formData.amountDisplay}
+                        onChange={(e) => setFormData({ ...formData, amountDisplay: formatNumberInput(e.target.value) })}
+                        className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
+                        placeholder="0"
+                    />
+                    <button type="button" onClick={solveForAmount} className="mt-1 p-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500" title="Calculate Monthly (Total / Time)"><RefreshCw className="w-4 h-4" /></button>
+                  </div>
                 </div>
               )}
 
@@ -480,13 +599,16 @@ export default function BillsPage() {
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                     {formData.billType === 'one-time' ? 'Deadline Date' : 'End Date (Optional)'}
                 </label>
-                <input
-                  type="date"
-                  required={formData.billType === 'one-time'}
-                  value={formData.endDate}
-                  onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
-                />
+                <div className="flex gap-2">
+                    <input
+                        type="date"
+                        required={formData.billType === 'one-time'}
+                        value={formData.endDate}
+                        onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                        className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
+                    />
+                    <button type="button" onClick={solveForEndDate} className="mt-1 p-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500" title="Calculate End Date (Total / Amount)"><RefreshCw className="w-4 h-4" /></button>
+                </div>
               </div>
             </div>
             <button type="submit" disabled={isSaving} className="w-full bg-emerald-600 text-white py-2 rounded-lg font-bold hover:bg-emerald-500 transition-colors disabled:opacity-50">
@@ -496,105 +618,181 @@ export default function BillsPage() {
         </div>
       )}
 
-      {sections.map((section) => {
-        const sectionBills = groupedBills[section.id];
-        if (sectionBills.length === 0) return null;
-
-        return (
-          <div key={section.id} className="space-y-6">
+      {showArchived ? (
+          <div className="space-y-6">
             <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-zinc-800 pb-2">
-                <section.icon className={`w-5 h-5 ${section.color}`} />
-                <h3 className="font-bold text-lg text-zinc-800 dark:text-zinc-100">{section.label}</h3>
+                <History className="w-5 h-5 text-zinc-400" />
+                <h3 className="font-bold text-lg text-zinc-800 dark:text-zinc-100">Completed Obligations</h3>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {sectionBills.map((bill) => {
-                const items = billItems[bill.id] || [];
-                const paidItems = items.filter(i => i.status === 'paid');
-                const totalPaid = paidItems.reduce((sum, item) => sum + item.amount, 0);
-                const progress = bill.totalAmount ? Math.min((totalPaid / bill.totalAmount) * 100, 100) : 0;
-                const currentUnallocated = bill.totalAmount ? bill.totalAmount - items.reduce((s, i) => s + i.amount, 0) : 0;
+            {completedBills.length === 0 ? (
+                <div className="py-20 text-center bg-zinc-50 dark:bg-zinc-800/30 rounded-3xl border-2 border-dashed border-zinc-200 dark:border-zinc-800">
+                    <History className="w-12 h-12 text-zinc-300 mx-auto mb-4" />
+                    <p className="text-zinc-500 font-medium">No completed bills yet.</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {completedBills.map((bill) => {
+                        const items = billItems[bill.id] || [];
+                        const paidItems = items.filter(i => i.status === 'paid');
+                        const totalPaid = paidItems.reduce((sum, item) => sum + item.amount, 0);
+
+                        return (
+                            <div key={bill.id} className="bg-zinc-50/50 p-6 rounded-2xl border border-zinc-200 dark:bg-zinc-900/50 dark:border-zinc-800 relative group flex flex-col opacity-75 grayscale hover:grayscale-0 hover:opacity-100 transition-all">
+                                <div className="absolute top-4 right-4 flex items-center gap-1">
+                                    <span className="text-[10px] font-bold text-emerald-600 uppercase bg-emerald-50 px-2 py-1 rounded-md dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800">Completed</span>
+                                </div>
+                                <div className="flex items-center gap-4 mb-4">
+                                    <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-zinc-200 text-zinc-500 dark:bg-zinc-800">
+                                        <Check className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-zinc-900 dark:text-zinc-50 line-through">{bill.name}</h3>
+                                        <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">{bill.category}</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-3 flex-grow">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-zinc-500">Total Paid</span>
+                                        <span className="font-bold text-zinc-900 dark:text-zinc-50">{formatIDR(totalPaid)}</span>
+                                    </div>
+                                    <div className="h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                                        <div className="h-full bg-emerald-500" style={{ width: '100%' }} />
+                                    </div>
+                                </div>
+                                <div className="mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-4">
+                                    <button
+                                        onClick={() => setSelectedBillId(bill.id)}
+                                        className="text-[10px] font-bold text-zinc-500 uppercase hover:bg-zinc-100 px-2 py-1 rounded-md transition-colors dark:hover:bg-zinc-800 flex items-center gap-1"
+                                    >
+                                        <History className="w-3 h-3" /> View History
+                                    </button>
+                                    <button onClick={() => deleteBill(bill.id)} className="p-2 text-zinc-400 hover:text-rose-600 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+          </div>
+      ) : (
+          <>
+            {sections.map((section) => {
+                const sectionBills = groupedBills[section.id];
+                if (sectionBills.length === 0) return null;
 
                 return (
-                  <div key={bill.id} className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 relative group flex flex-col">
-                    <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => handleEdit(bill)} className="p-2 text-zinc-400 hover:text-emerald-600 transition-colors"><Edit2 className="w-4 h-4" /></button>
-                      <button onClick={() => deleteBill(bill.id)} className="p-2 text-zinc-400 hover:text-rose-600 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  <div key={section.id} className="space-y-6">
+                    <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                        <section.icon className={`w-5 h-5 ${section.color}`} />
+                        <h3 className="font-bold text-lg text-zinc-800 dark:text-zinc-100">{section.label}</h3>
                     </div>
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${section.bg} ${section.color}`}>
-                        <section.icon className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-zinc-900 dark:text-zinc-50">{bill.name}</h3>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">{bill.category}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-3 flex-grow">
-                      {bill.billType !== 'installment' && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-zinc-500">Amount</span>
-                          <span className="font-bold text-zinc-900 dark:text-zinc-50">{formatIDR(bill.amount)}</span>
-                        </div>
-                      )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {sectionBills.map((bill) => {
+                        const items = billItems[bill.id] || [];
+                        const paidItems = items.filter(i => i.status === 'paid');
+                        const totalPaid = paidItems.reduce((sum, item) => sum + item.amount, 0);
+                        const progress = bill.totalAmount ? Math.min((totalPaid / bill.totalAmount) * 100, 100) : 0;
+                        const currentUnallocated = bill.totalAmount ? bill.totalAmount - items.reduce((s, i) => s + i.amount, 0) : 0;
 
-                      {bill.billType === 'installment' && bill.totalAmount !== undefined && (
-                        <>
-                          <div className="space-y-2 pt-2">
-                            <div className="flex justify-between text-[10px] font-bold uppercase text-zinc-400">
-                              <span>Progress</span>
-                              <span>{formatIDR(totalPaid)} / {formatIDR(bill.totalAmount)}</span>
+                        return (
+                          <div key={bill.id} className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 relative group flex flex-col">
+                            <div className="absolute top-4 right-4 flex items-center gap-2">
+                              {bill.endDate && (
+                                <span className="text-[10px] font-bold text-zinc-400 uppercase bg-zinc-50 px-2 py-1 rounded-md dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700">
+                                  {bill.billType === 'one-time' ? 'Due' : 'Until'} {new Date(bill.endDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </span>
+                              )}
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => handleEdit(bill)} className="p-2 text-zinc-400 hover:text-emerald-600 transition-colors"><Edit2 className="w-4 h-4" /></button>
+                                <button onClick={() => deleteBill(bill.id)} className="p-2 text-zinc-400 hover:text-rose-600 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                              </div>
                             </div>
-                            <div className="h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                              <div className="h-full bg-amber-500 transition-all duration-500" style={{ width: `${progress}%` }} />
+                            <div className="flex items-center gap-4 mb-4">
+                              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${section.bg} ${section.color}`}>
+                                <section.icon className="w-6 h-6" />
+                              </div>
+                              <div className="flex-grow">
+                                <h3 className="font-bold text-zinc-900 dark:text-zinc-50">{bill.name}</h3>
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">{bill.category}</p>
+                              </div>                            </div>                            
+                            <div className="space-y-3 flex-grow">
+                              {bill.billType !== 'installment' && (
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-zinc-500">Amount</span>
+                                  <span className="font-bold text-zinc-900 dark:text-zinc-50">{formatIDR(bill.amount)}</span>
+                                </div>
+                              )}
+
+                              {bill.billType === 'installment' && bill.totalAmount !== undefined && Math.abs(currentUnallocated) > 1 && (
+                                <div className="flex items-center gap-2 text-[10px] font-bold p-2 rounded-lg mt-2 bg-rose-50 text-rose-600 dark:bg-rose-900/20">
+                                  <AlertTriangle className="w-3 h-3" />
+                                  <span>Mismatch detected in schedule</span>
+                                </div>
+                              )}
+
+                              <div className="flex justify-between text-sm">
+                                <span className="text-zinc-500">{bill.billType === 'one-time' ? 'Deadline' : 'Billing'}</span>
+                                <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                                    {bill.billType === 'one-time' ? bill.endDate : `Every ${bill.billing_day}${bill.billing_day === 1 ? 'st' : bill.billing_day === 2 ? 'nd' : bill.billing_day === 3 ? 'rd' : 'th'}`}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-4">
+                              <button
+                                onClick={() => setSelectedBillId(bill.id)}
+                                className="text-[10px] font-bold text-emerald-600 uppercase hover:bg-emerald-50 px-2 py-1 rounded-md transition-colors dark:hover:bg-emerald-900/20 flex items-center gap-1 whitespace-nowrap"
+                              >
+                                {bill.billType === 'installment' ? <Layers className="w-3 h-3" /> : <History className="w-3 h-3" />}
+                                {bill.billType === 'installment' ? 'Schedule' : 'History'}
+                              </button>
+
+                              {bill.totalAmount !== undefined && (
+                                <div className="flex-1 flex flex-col gap-1 min-w-[60px]">
+                                  <div className="h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                                    <div className={`h-full transition-all duration-500 ${bill.billType === 'installment' ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${progress}%` }} />
+                                  </div>
+                                  <div className="flex justify-between items-center text-[8px] font-bold text-zinc-400 uppercase tracking-tighter">
+                                    <span>{progress.toFixed(0)}%</span>
+                                    <span>
+                                        {bill.billType === 'recurring' && bill.amount > 0 
+                                            ? `${paidItems.length} / ${Math.round(bill.totalAmount / bill.amount)} Mo`
+                                            : formatIDR(totalPaid)
+                                        }
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {bill.lastGeneratedMonth === nextMonthStr || (bill.totalAmount !== undefined && totalPaid >= (bill.totalAmount - 1)) ? (
+                                <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 uppercase bg-emerald-50 px-2 py-1 rounded-md dark:bg-emerald-900/20 dark:text-emerald-400 whitespace-nowrap">
+                                  <Check className="w-3 h-3" /> Fully Paid
+                                </span>
+                              ) : bill.lastGeneratedMonth === currentMonthStr ? (
+                                <button
+                                  onClick={() => handleMarkAsPaid(bill, nextMonthStr)}
+                                  className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 uppercase hover:bg-emerald-50 transition-colors bg-zinc-50 px-2 py-1 rounded-md dark:bg-zinc-800 dark:text-emerald-400 dark:hover:bg-emerald-900/20 whitespace-nowrap"
+                                >
+                                  <Calendar className="w-3 h-3" /> Pay for {nextMonthName}
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleMarkAsPaid(bill, currentMonthStr)}
+                                  className="flex items-center gap-1 text-[10px] font-bold text-zinc-500 uppercase hover:text-emerald-600 transition-colors bg-zinc-50 px-2 py-1 rounded-md dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-emerald-400 whitespace-nowrap"
+                                >
+                                  <Check className="w-3 h-3" /> Mark Paid
+                                </button>
+                              )}
                             </div>
                           </div>
-                          {Math.abs(currentUnallocated) > 1 && (
-                            <div className="flex items-center gap-2 text-[10px] font-bold p-2 rounded-lg mt-2 bg-rose-50 text-rose-600 dark:bg-rose-900/20">
-                              <AlertTriangle className="w-3 h-3" />
-                              <span>Mismatch detected in schedule</span>
-                            </div>
-                          )}
-                        </>
-                      )}
-
-                      <div className="flex justify-between text-sm">
-                        <span className="text-zinc-500">{bill.billType === 'one-time' ? 'Due Date' : 'Billing'}</span>
-                        <span className="font-medium text-zinc-900 dark:text-zinc-50">
-                            {bill.billType === 'one-time' ? bill.endDate : `Every ${bill.billing_day}${bill.billing_day === 1 ? 'st' : bill.billing_day === 2 ? 'nd' : bill.billing_day === 3 ? 'rd' : 'th'}`}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
-                      <button
-                        onClick={() => setSelectedBillId(bill.id)}
-                        className="text-[10px] font-bold text-emerald-600 uppercase hover:bg-emerald-50 px-2 py-1 rounded-md transition-colors dark:hover:bg-emerald-900/20 flex items-center gap-1"
-                      >
-                        {bill.billType === 'installment' ? <Layers className="w-3 h-3" /> : <History className="w-3 h-3" />}
-                        {bill.billType === 'installment' ? 'View Schedule' : 'History'}
-                      </button>
-                      
-                      {bill.lastGeneratedMonth === currentMonthStr ? (
-                        <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 uppercase bg-emerald-50 px-2 py-1 rounded-md dark:bg-emerald-900/20 dark:text-emerald-400">
-                          <Check className="w-3 h-3" /> Paid
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleMarkAsPaid(bill)}
-                          className="flex items-center gap-1 text-[10px] font-bold text-zinc-500 uppercase hover:text-emerald-600 transition-colors bg-zinc-50 px-2 py-1 rounded-md dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-emerald-400"
-                        >
-                          Mark as Paid
-                        </button>
-                      )}
+                        );
+                      })}
                     </div>
                   </div>
                 );
-              })}
-            </div>
-          </div>
-        );
-      })}
+            })}
+          </>
+      )}
 
       {/* Bill Items Detail Modal */}
       {selectedBillId && selectedBill && (
@@ -605,7 +803,16 @@ export default function BillsPage() {
                 <h3 className="font-bold text-xl text-zinc-900 dark:text-zinc-50">{selectedBill.name}</h3>
                 <p className="text-xs text-zinc-500 uppercase font-bold tracking-widest">{selectedBill.billType} Roadmap</p>
               </div>
-              <button onClick={() => setSelectedBillId(null)} className="p-2 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full transition-colors"><X className="w-5 h-5 text-zinc-500" /></button>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => handleReconcile(selectedBill)}
+                  className="p-2 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full transition-colors text-emerald-600"
+                  title="Scan & Link Transactions"
+                >
+                  <RefreshCw className="w-5 h-5" />
+                </button>
+                <button onClick={() => setSelectedBillId(null)} className="p-2 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full transition-colors"><X className="w-5 h-5 text-zinc-500" /></button>
+              </div>
             </div>
 
             <div className="flex-grow overflow-y-auto p-6 space-y-6">
@@ -627,38 +834,46 @@ export default function BillsPage() {
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-50">Installment Schedule</h4>
-                  {selectedBill.billType === 'installment' && (
-                    <button onClick={() => handleAddManualItem(selectedBill)} className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 uppercase bg-emerald-50 px-2 py-1 rounded-md hover:bg-emerald-100 transition-colors dark:bg-emerald-900/20"><PlusCircle className="w-3 h-3" /> Add Item</button>
-                  )}
+                  <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-50">Payment History / Roadmap</h4>
+                  <button onClick={() => handleAddManualItem(selectedBill)} className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 uppercase bg-emerald-50 px-2 py-1 rounded-md hover:bg-emerald-100 transition-colors dark:bg-emerald-900/20"><PlusCircle className="w-3 h-3" /> Add Item</button>
                 </div>
 
                 <div className="space-y-2">
-                  {selectedItems.map((item) => {
-                    const isOverdue = item.status === 'pending' && new Date(item.dueDate) < new Date();
-                    return (
-                      <div key={item.id} className={`group flex items-center justify-between p-4 bg-white dark:bg-zinc-900 border rounded-2xl transition-all shadow-sm ${item.status === 'paid' ? 'border-zinc-100 dark:border-zinc-800 bg-zinc-50/50' : isOverdue ? 'border-rose-200 bg-rose-50/20' : 'border-zinc-200 dark:border-zinc-700'}`}>
-                        <div className="flex items-center gap-4">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${item.status === 'paid' ? 'bg-emerald-100 text-emerald-600' : isOverdue ? 'bg-rose-100 text-rose-600' : 'bg-zinc-100 text-zinc-400'}`}>
-                            {item.status === 'paid' ? <Check className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
+                  {selectedItems.length > 0 ? (
+                    selectedItems.map((item) => {
+                      const isOverdue = item.status === 'pending' && new Date(item.dueDate) < new Date();
+                      return (
+                        <div key={item.id} className={`group flex items-center justify-between p-4 bg-white dark:bg-zinc-900 border rounded-2xl transition-all shadow-sm ${item.status === 'paid' ? 'border-zinc-100 dark:border-zinc-800 bg-zinc-50/50' : isOverdue ? 'border-rose-200 bg-rose-50/20' : 'border-zinc-200 dark:border-zinc-700'}`}>
+                          <div className="flex items-center gap-4">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${item.status === 'paid' ? 'bg-emerald-100 text-emerald-600' : isOverdue ? 'bg-rose-100 text-rose-600' : 'bg-zinc-100 text-zinc-400'}`}>
+                              {item.status === 'paid' ? <Check className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-zinc-900 dark:text-zinc-50">{formatIDR(item.amount)}</p>
+                              <p className={`text-[10px] font-bold ${isOverdue ? 'text-rose-500' : 'text-zinc-500'}`}>{new Date(item.dueDate).toLocaleDateString(undefined, { dateStyle: 'long' })}{isOverdue && ' (Overdue)'}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-bold text-zinc-900 dark:text-zinc-50">{formatIDR(item.amount)}</p>
-                            <p className={`text-[10px] font-bold ${isOverdue ? 'text-rose-500' : 'text-zinc-500'}`}>{new Date(item.dueDate).toLocaleDateString(undefined, { dateStyle: 'long' })}{isOverdue && ' (Overdue)'}</p>
+                          <div className="flex items-center gap-2">
+                            {item.status === 'pending' && (
+                              <button onClick={() => handlePayItem(selectedBill, item)} className="flex items-center gap-1 bg-emerald-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold hover:bg-emerald-500 transition-colors"><ArrowUpRight className="w-3 h-3" /> Pay</button>
+                            )}
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                              <button onClick={() => handleUpdateItemAmount(item, selectedBill)} className="p-1.5 text-zinc-400 hover:text-emerald-600 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
+                              <button onClick={() => handleDeleteItem(item.id, selectedBill)} className="p-1.5 text-zinc-400 hover:text-rose-600 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {item.status === 'pending' && (
-                            <button onClick={() => handlePayItem(selectedBill, item)} className="flex items-center gap-1 bg-emerald-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold hover:bg-emerald-500 transition-colors"><ArrowUpRight className="w-3 h-3" /> Pay</button>
-                          )}
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
-                            <button onClick={() => handleUpdateItemAmount(item, selectedBill)} className="p-1.5 text-zinc-400 hover:text-emerald-600 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
-                            <button onClick={() => handleDeleteItem(item.id, selectedBill)} className="p-1.5 text-zinc-400 hover:text-rose-600 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                          </div>
-                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="py-12 text-center bg-zinc-50 dark:bg-zinc-800/30 rounded-3xl border-2 border-dashed border-zinc-200 dark:border-zinc-800">
+                      <div className="w-12 h-12 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <History className="w-6 h-6 text-zinc-400" />
                       </div>
-                    );
-                  })}
+                      <p className="text-sm font-bold text-zinc-500">No payment history or schedule yet.</p>
+                      <p className="text-[10px] text-zinc-400 mt-1 uppercase tracking-wider">Items will appear here once processed or added manually.</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
