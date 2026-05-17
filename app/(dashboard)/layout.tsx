@@ -86,16 +86,14 @@ export default function DashboardLayout({
             <Link
               key={item.name}
               href={item.href}
+              title={item.name}
               className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-200 ${
                 isActive
                   ? 'text-emerald-600 dark:text-emerald-500'
                   : 'text-zinc-400 dark:text-zinc-500'
               }`}
             >
-              <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5px]' : 'stroke-[2px]'}`} />
-              <span className={`text-[10px] font-bold mt-1 tracking-wide ${isActive ? 'opacity-100' : 'opacity-70'}`}>
-                {item.name}
-              </span>
+              <Icon className={`w-6 h-6 ${isActive ? 'stroke-[2.5px]' : 'stroke-[2px]'}`} />
             </Link>
           );
         })}

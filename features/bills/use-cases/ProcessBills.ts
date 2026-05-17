@@ -17,6 +17,11 @@ export class ProcessBills {
     for (const bill of bills) {
       if (!bill.active) continue;
 
+      // ONLY automatically process standard 'recurring' bills.
+      // Installments and One-time bills are handled via manual roadmap interaction
+      // or specific deadline logic.
+      if (bill.billType !== 'recurring') continue;
+
       // 1. Check if bill has expired
       if (bill.endDate) {
         const endDate = new Date(bill.endDate);
