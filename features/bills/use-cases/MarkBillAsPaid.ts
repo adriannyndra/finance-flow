@@ -21,7 +21,17 @@ export class MarkBillAsPaid {
       date: today
     });
 
-    // 2. Update the bill's last generated month
+    // 2. Create the bill item (Detail)
+    await this.billRepository.addBillItem(userId, {
+      billId: bill.id,
+      amount: bill.amount,
+      dueDate: today,
+      status: 'paid',
+      paidAt: new Date().toISOString(),
+      transactionId: transaction.id
+    });
+
+    // 3. Update the bill's last generated month
     await this.billRepository.updateBill(bill.id, {
       lastGeneratedMonth: currentMonth
     });

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Bill, BillFrequency } from '@/core/entities';
+import { Bill, BillFrequency, BillType, BillItem } from '@/core/entities';
 import { EXPENSE_CATEGORIES } from '@/features/transactions/domain/types';
 import { SupabaseBillRepository } from '@/features/bills/infrastructure/SupabaseBillRepository';
 import { GetBills } from '@/features/bills/use-cases/GetBills';
@@ -9,6 +9,7 @@ import { AddBill } from '@/features/bills/use-cases/AddBill';
 import { UpdateBill } from '@/features/bills/use-cases/UpdateBill';
 import { DeleteBill } from '@/features/bills/use-cases/DeleteBill';
 import { MarkBillAsPaid } from '@/features/bills/use-cases/MarkBillAsPaid';
+import { PayInstallmentItem } from '@/features/bills/use-cases/PayInstallmentItem';
 import { SupabaseTransactionRepository } from '@/features/transactions/infrastructure/SupabaseTransactionRepository';
 import { formatIDR, formatNumberInput, parseNumberInput } from '@/core/formatters/currency';
 import { getUserId } from '@/utils/auth/get-user-id';
@@ -21,7 +22,15 @@ import {
   Check,
   Calendar,
   CreditCard,
-  AlertCircle
+  AlertCircle,
+  Clock,
+  X,
+  ChevronRight,
+  Plus,
+  ArrowUpRight,
+  AlertTriangle,
+  PlusCircle,
+  Pencil
 } from 'lucide-react';
 
 const repository = new SupabaseBillRepository();
@@ -31,22 +40,53 @@ const addBillUseCase = new AddBill(repository);
 const updateBillUseCase = new UpdateBill(repository);
 const deleteBillUseCase = new DeleteBill(repository);
 const markBillAsPaidUseCase = new MarkBillAsPaid(repository, transactionRepo);
+const payInstallmentItemUseCase = new PayInstallmentItem(repository, transactionRepo);
 
 export default function BillsPage() {
   const [bills, setBills] = useState<Bill[]>([]);
+  const [billItems, setBillItems] = useState<Record<string, BillItem[]>>({});
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [userId, setUserId] = useState<string | null>(getUserId());
+  const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
 
   const currentMonthStr = new Date().toISOString().slice(0, 7);
+
+  const fetchBillItems = async (uid: string) => {
+    try {
+      const items = await repository.getBillItems(uid);
+      const grouped = items.reduce((acc, item) => {
+        if (!acc[item.billId]) acc[item.billId] = [];
+        acc[item.billId].push(item);
+        return acc;
+      }, {} as Record<string, BillItem[]>);
+      setBillItems(grouped);
+    } catch (err) {
+      console.error('Failed to fetch bill items', err);
+    }
+  };
 
   const handleMarkAsPaid = async (bill: Bill) => {
     if (!userId || !confirm(`Mark ${bill.name} as paid for this month?`)) return;
     try {
       await markBillAsPaidUseCase.execute(userId, bill);
       setBills(bills.map(b => b.id === bill.id ? { ...b, lastGeneratedMonth: currentMonthStr } : b));
+      fetchBillItems(userId);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Error: ${message}`);
+    }
+  };
+
+  const handlePayItem = async (bill: Bill, item: BillItem) => {
+    if (!userId || !confirm(`Pay this installment for ${item.dueDate}?`)) return;
+    try {
+      await payInstallmentItemUseCase.execute(userId, bill, item);
+      const billsData = await getBillsUseCase.execute(userId);
+      setBills(billsData);
+      fetchBillItems(userId);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       alert(`Error: ${message}`);
@@ -58,8 +98,10 @@ export default function BillsPage() {
   const [formData, setFormData] = useState({
     name: '',
     amountDisplay: '',
+    totalAmountDisplay: '',
     category: EXPENSE_CATEGORIES[0],
     frequency: 'monthly' as BillFrequency,
+    billType: 'recurring' as BillType,
     billing_day: 1,
     endDate: '',
   });
@@ -77,6 +119,7 @@ export default function BillsPage() {
       if (uid) {
         const data = await getBillsUseCase.execute(uid);
         setBills(data);
+        await fetchBillItems(uid);
       }
       setLoading(false);
     };
@@ -89,8 +132,10 @@ export default function BillsPage() {
     setFormData({
       name: bill.name,
       amountDisplay: formatNumberInput(bill.amount.toString()),
+      totalAmountDisplay: bill.totalAmount ? formatNumberInput(bill.totalAmount.toString()) : '',
       category: bill.category,
       frequency: bill.frequency,
+      billType: bill.billType,
       billing_day: bill.billing_day,
       endDate: bill.endDate || '',
     });
@@ -100,6 +145,7 @@ export default function BillsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const amount = parseNumberInput(formData.amountDisplay);
+    const totalAmount = formData.totalAmountDisplay ? parseNumberInput(formData.totalAmountDisplay) : undefined;
     if (!amount || !userId) return;
 
     setIsSaving(true);
@@ -108,8 +154,10 @@ export default function BillsPage() {
         const updated = await updateBillUseCase.execute(editingId, {
           name: formData.name,
           amount: parseFloat(amount),
+          totalAmount: totalAmount ? parseFloat(totalAmount) : undefined,
           category: formData.category,
           frequency: formData.frequency,
+          billType: formData.billType,
           billing_day: formData.billing_day,
           endDate: formData.endDate || undefined
         });
@@ -118,13 +166,16 @@ export default function BillsPage() {
         const newBill = await addBillUseCase.execute(userId, {
           name: formData.name,
           amount: parseFloat(amount),
+          totalAmount: totalAmount ? parseFloat(totalAmount) : undefined,
           category: formData.category,
           frequency: formData.frequency,
+          billType: formData.billType,
           billing_day: formData.billing_day,
           active: true,
           endDate: formData.endDate || undefined
         });
         setBills([...bills, newBill]);
+        await fetchBillItems(userId);
       }
       
       setIsAdding(false);
@@ -132,8 +183,10 @@ export default function BillsPage() {
       setFormData({
         name: '',
         amountDisplay: '',
+        totalAmountDisplay: '',
         category: EXPENSE_CATEGORIES[0],
         frequency: 'monthly',
+        billType: 'recurring',
         billing_day: 1,
         endDate: '',
       });
@@ -146,7 +199,7 @@ export default function BillsPage() {
   };
 
   const deleteBill = async (id: string) => {
-    if (!confirm('Delete this bill?')) return;
+    if (!confirm('Delete this bill? This will also delete all its payment history.')) return;
     try {
       await deleteBillUseCase.execute(id);
       setBills(bills.filter(s => s.id !== id));
@@ -155,6 +208,127 @@ export default function BillsPage() {
       alert(`Error: ${message}`);
     }
   };
+
+  const handleDeleteItem = async (itemId: string, bill: Bill) => {
+    if (!confirm('Delete this payment record?')) return;
+    try {
+      const items = billItems[bill.id] || [];
+      const itemToDelete = items.find(i => i.id === itemId);
+      if (!itemToDelete) return;
+
+      const currentItemsTotal = items.reduce((s, i) => s + i.amount, 0);
+      const isSynced = bill.totalAmount !== undefined && Math.abs(bill.totalAmount - currentItemsTotal) < 1;
+
+      await repository.deleteBillItem(itemId);
+      
+      // Update header total if it's an installment and was synced
+      if (bill.billType === 'installment' && bill.totalAmount !== undefined && isSynced) {
+          const newTotal = bill.totalAmount - itemToDelete.amount;
+          const updated = await updateBillUseCase.execute(bill.id, { totalAmount: newTotal });
+          setBills(bills.map(b => b.id === bill.id ? updated : b));
+      }
+      
+      if (userId) fetchBillItems(userId);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleUpdateItemAmount = async (item: BillItem, bill: Bill) => {
+    const newAmountStr = prompt('Enter new amount for this payment:', item.amount.toString());
+    if (newAmountStr === null) return;
+    
+    const newAmount = parseFloat(newAmountStr);
+    if (isNaN(newAmount)) return alert('Invalid amount');
+
+    try {
+      const items = billItems[bill.id] || [];
+      const currentItemsTotal = items.reduce((s, i) => s + i.amount, 0);
+      const isSynced = bill.totalAmount !== undefined && Math.abs(bill.totalAmount - currentItemsTotal) < 1;
+      const diff = newAmount - item.amount;
+      const newItemsTotal = currentItemsTotal + diff;
+
+      await repository.updateBillItem(item.id, { amount: newAmount });
+      
+      // Update header total if it's an installment
+      if (bill.billType === 'installment' && bill.totalAmount !== undefined) {
+          // If synced, follow the change. If not synced, only move if it pushes past the existing header.
+          const newHeader = isSynced ? (bill.totalAmount + diff) : Math.max(bill.totalAmount, newItemsTotal);
+          
+          if (newHeader !== bill.totalAmount) {
+            const updated = await updateBillUseCase.execute(bill.id, { totalAmount: newHeader });
+            setBills(bills.map(b => b.id === bill.id ? updated : b));
+          }
+      }
+
+      if (userId) fetchBillItems(userId);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleUpdateTotalDebt = async (bill: Bill) => {
+    const newTotalStr = prompt('Enter new Total Debt amount:', bill.totalAmount?.toString() || '0');
+    if (newTotalStr === null) return;
+
+    const newTotal = parseFloat(newTotalStr);
+    if (isNaN(newTotal)) return alert('Invalid amount');
+
+    try {
+      const updated = await updateBillUseCase.execute(bill.id, { totalAmount: newTotal });
+      setBills(bills.map(b => b.id === bill.id ? updated : b));
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleAddManualItem = async (bill: Bill) => {
+    const items = billItems[bill.id] || [];
+    const lastItem = items[items.length - 1];
+    const baseDate = lastItem ? new Date(lastItem.dueDate) : new Date();
+    const nextDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, bill.billing_day);
+    
+    const amountStr = prompt('Enter amount for new installment:', bill.amount.toString());
+    if (!amountStr) return;
+    const amount = parseFloat(amountStr);
+    
+    const dateStr = prompt('Enter due date (YYYY-MM-DD):', nextDate.toISOString().split('T')[0]);
+    if (!dateStr) return;
+
+    try {
+      if (!userId) return;
+      const currentItemsTotal = items.reduce((s, i) => s + i.amount, 0);
+      const isSynced = bill.totalAmount !== undefined && Math.abs(bill.totalAmount - currentItemsTotal) < 1;
+      const newItemsTotal = currentItemsTotal + amount;
+
+      await repository.addBillItem(userId, {
+        billId: bill.id,
+        amount,
+        dueDate: dateStr,
+        status: 'pending'
+      });
+      
+      // Update total debt header
+      if (bill.totalAmount !== undefined) {
+          const newHeader = isSynced ? (bill.totalAmount + amount) : Math.max(bill.totalAmount, newItemsTotal);
+          if (newHeader !== bill.totalAmount) {
+            const updated = await updateBillUseCase.execute(bill.id, { totalAmount: newHeader });
+            setBills(bills.map(b => b.id === bill.id ? updated : b));
+          }
+      }
+      
+      fetchBillItems(userId);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const selectedBill = bills.find(b => b.id === selectedBillId);
+  const selectedItems = selectedBillId ? billItems[selectedBillId] || [] : [];
+  
+  // Calculate allocation for selected bill
+  const totalItemsAmount = selectedItems.reduce((sum, i) => sum + i.amount, 0);
+  const unallocatedAmount = selectedBill?.totalAmount ? selectedBill.totalAmount - totalItemsAmount : 0;
 
   if (loading) {
     return (
@@ -168,8 +342,8 @@ export default function BillsPage() {
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Bills</h2>
-          <p className="text-zinc-500 dark:text-zinc-400">Manage your recurring expenses and bills.</p>
+          <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Bills & Installments</h2>
+          <p className="text-zinc-500 dark:text-zinc-400">Manage recurring payments, debt installments, and one-time bills.</p>
         </div>
         <button
           onClick={() => {
@@ -195,11 +369,23 @@ export default function BillsPage() {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
-                  placeholder="e.g. Netflix"
+                  placeholder="e.g. Laptop Installment"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Amount (Rp)</label>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Bill Type</label>
+                <select
+                  value={formData.billType}
+                  onChange={(e) => setFormData({ ...formData, billType: e.target.value as BillType })}
+                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
+                >
+                  <option value="recurring">Recurring (Subscription)</option>
+                  <option value="installment">Installment (Debt/Cicilan)</option>
+                  <option value="one-time">One-time Bill</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">{formData.billType === 'recurring' ? 'Monthly Amount' : 'Initial Monthly'} (Rp)</label>
                 <input
                   type="text"
                   required
@@ -209,6 +395,19 @@ export default function BillsPage() {
                   placeholder="0"
                 />
               </div>
+              {formData.billType === 'installment' && (
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Total Debt Amount</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.totalAmountDisplay}
+                    onChange={(e) => setFormData({ ...formData, totalAmountDisplay: formatNumberInput(e.target.value) })}
+                    className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 font-bold text-emerald-600"
+                    placeholder="Total amount to be paid"
+                  />
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Category</label>
                 <select
@@ -233,26 +432,6 @@ export default function BillsPage() {
                   className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Frequency</label>
-                <select
-                  value={formData.frequency}
-                  onChange={(e) => setFormData({ ...formData, frequency: e.target.value as BillFrequency })}
-                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
-                >
-                  <option value="monthly">Monthly</option>
-                  <option value="yearly">Yearly</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">End Date (Optional)</label>
-                <input
-                  type="date"
-                  value={formData.endDate}
-                  onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
-                />
-              </div>
             </div>
             <button type="submit" disabled={isSaving} className="w-full bg-emerald-600 text-white py-2 rounded-lg font-bold hover:bg-emerald-500 transition-colors disabled:opacity-50">
               {isSaving ? 'Saving...' : (editingId ? 'Update Bill' : 'Save Bill')}
@@ -262,92 +441,251 @@ export default function BillsPage() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {bills.map((bill) => (
-          <div key={bill.id} className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 relative group">
-            <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button
-                onClick={() => handleEdit(bill)}
-                className="p-2 text-zinc-400 hover:text-emerald-600 transition-colors"
-                title="Edit Bill"
-              >
-                <Edit2 className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => deleteBill(bill.id)}
-                className="p-2 text-zinc-400 hover:text-rose-600 transition-colors"
-                title="Delete Bill"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400">
-                <RefreshCw className="w-6 h-6" />
+        {bills.map((bill) => {
+          const items = billItems[bill.id] || [];
+          const paidItems = items.filter(i => i.status === 'paid');
+          const totalPaid = paidItems.reduce((sum, item) => sum + item.amount, 0);
+          const progress = bill.totalAmount ? Math.min((totalPaid / bill.totalAmount) * 100, 100) : 0;
+          
+          const currentUnallocated = bill.totalAmount ? bill.totalAmount - items.reduce((s, i) => s + i.amount, 0) : 0;
+
+          return (
+            <div key={bill.id} className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 relative group flex flex-col">
+              <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={() => handleEdit(bill)}
+                  className="p-2 text-zinc-400 hover:text-emerald-600 transition-colors"
+                  title="Edit Bill"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => deleteBill(bill.id)}
+                  className="p-2 text-zinc-400 hover:text-rose-600 transition-colors"
+                  title="Delete Bill"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
-              <div>
-                <h3 className="font-bold text-zinc-900 dark:text-zinc-50">{bill.name}</h3>
-                <p className="text-xs text-zinc-500">{bill.category}</p>
-              </div>
-            </div>
-            <div className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Amount</span>
-                <span className="font-bold text-zinc-900 dark:text-zinc-50">{formatIDR(bill.amount)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Billing Date</span>
-                <span className="font-medium text-zinc-900 dark:text-zinc-50">Every {bill.billing_day}{bill.billing_day === 1 ? 'st' : bill.billing_day === 2 ? 'nd' : bill.billing_day === 3 ? 'rd' : 'th'}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Frequency</span>
-                <span className="px-2 py-0.5 bg-zinc-100 rounded text-[10px] font-bold uppercase dark:bg-zinc-800">{bill.frequency}</span>
-              </div>
-              {bill.endDate && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-zinc-500">End Date</span>
-                  <span className="font-medium text-rose-600 dark:text-rose-400">{bill.endDate}</span>
+              <div className="flex items-center gap-4 mb-4">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                  bill.billType === 'installment' ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400' :
+                  bill.billType === 'one-time' ? 'bg-zinc-50 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400' :
+                  'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400'
+                }`}>
+                  {bill.billType === 'installment' ? <Clock className="w-6 h-6" /> : <RefreshCw className="w-6 h-6" />}
                 </div>
-              )}
-            </div>
-            <div className="mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs text-zinc-400">
-                <Calendar className="w-3 h-3" />
-                <span>Next: {bill.billing_day} {new Date().toLocaleString('default', { month: 'short' })}</span>
+                <div>
+                  <h3 className="font-bold text-zinc-900 dark:text-zinc-50">{bill.name}</h3>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                    {bill.billType} • {bill.category}
+                  </p>
+                </div>
               </div>
               
-              {bill.lastGeneratedMonth === currentMonthStr ? (
-                <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 uppercase bg-emerald-50 px-2 py-1 rounded-md dark:bg-emerald-900/20 dark:text-emerald-400">
-                  <Check className="w-3 h-3" /> Paid
-                </span>
-              ) : (
+              <div className="space-y-3 flex-grow">
+                {bill.billType === 'recurring' && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-zinc-500">Monthly Payment</span>
+                    <span className="font-bold text-zinc-900 dark:text-zinc-50">{formatIDR(bill.amount)}</span>
+                  </div>
+                )}
+
+                {bill.billType === 'installment' && bill.totalAmount !== undefined && (
+                  <>
+                    <div className="space-y-2 pt-2">
+                      <div className="flex justify-between text-[10px] font-bold uppercase text-zinc-400">
+                        <span>Paid Progress</span>
+                        <span>{formatIDR(totalPaid)} / {formatIDR(bill.totalAmount)}</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-amber-500 transition-all duration-500" 
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    </div>
+                    {Math.abs(currentUnallocated) > 1 && (
+                      <div className={`flex items-center gap-2 text-[10px] font-bold p-2 rounded-lg mt-2 ${
+                        currentUnallocated > 0 ? 'bg-rose-50 text-rose-600 dark:bg-rose-900/20' : 'bg-blue-50 text-blue-600 dark:bg-blue-900/20'
+                      }`}>
+                        <AlertTriangle className="w-3 h-3" />
+                        <span>{currentUnallocated > 0 ? `Unallocated: ${formatIDR(currentUnallocated)}` : `Over-allocated: ${formatIDR(Math.abs(currentUnallocated))}`}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <div className="flex justify-between text-sm">
+                  <span className="text-zinc-500">Billing Date</span>
+                  <span className="font-medium text-zinc-900 dark:text-zinc-50">Every {bill.billing_day}{bill.billing_day === 1 ? 'st' : bill.billing_day === 2 ? 'nd' : bill.billing_day === 3 ? 'rd' : 'th'}</span>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
                 <button
-                  onClick={() => handleMarkAsPaid(bill)}
-                  className="flex items-center gap-1 text-[10px] font-bold text-zinc-500 uppercase hover:text-emerald-600 transition-colors bg-zinc-50 px-2 py-1 rounded-md dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-emerald-400"
+                  onClick={() => setSelectedBillId(bill.id)}
+                  className="text-[10px] font-bold text-emerald-600 uppercase hover:bg-emerald-50 px-2 py-1 rounded-md transition-colors dark:hover:bg-emerald-900/20"
                 >
-                  Mark as Paid
+                  View Schedule
                 </button>
-              )}
+                
+                {bill.lastGeneratedMonth === currentMonthStr ? (
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 uppercase bg-emerald-50 px-2 py-1 rounded-md dark:bg-emerald-900/20 dark:text-emerald-400">
+                    <Check className="w-3 h-3" /> Paid
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => handleMarkAsPaid(bill)}
+                    className="flex items-center gap-1 text-[10px] font-bold text-zinc-500 uppercase hover:text-emerald-600 transition-colors bg-zinc-50 px-2 py-1 rounded-md dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-emerald-400"
+                  >
+                    Mark as Paid
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
-        {bills.length === 0 && !isAdding && (
-          <div className="col-span-full py-12 bg-white rounded-2xl border border-dashed border-zinc-300 text-center dark:bg-zinc-900 dark:border-zinc-800">
-            <CreditCard className="w-12 h-12 text-zinc-300 mx-auto mb-4" />
-            <p className="text-zinc-500 font-medium">No active bills found.</p>
-            <button onClick={() => setIsAdding(true)} className="text-emerald-600 font-bold text-sm mt-2">Add your first bill &rarr;</button>
-          </div>
-        )}
+          );
+        })}
       </div>
 
-      <div className="bg-amber-50 p-6 rounded-2xl border border-amber-100 dark:bg-amber-900/10 dark:border-amber-900/20 flex gap-4">
-        <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" />
-        <div>
-          <h4 className="text-amber-800 font-bold text-sm dark:text-amber-400">How auto-tracking works</h4>
-          <p className="text-amber-700 text-xs leading-relaxed mt-1 dark:text-amber-500/80">
-            When you add a bill, the system will automatically create a transaction for it every month on your specified billing day. You don&apos;t have to add them manually anymore!
-          </p>
+      {/* Bill Items Detail Modal */}
+      {selectedBillId && selectedBill && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-zinc-50 dark:bg-zinc-800/50">
+              <div>
+                <h3 className="font-bold text-xl text-zinc-900 dark:text-zinc-50">{selectedBill.name}</h3>
+                <p className="text-xs text-zinc-500 uppercase font-bold tracking-widest">{selectedBill.billType} Roadmap</p>
+              </div>
+              <button 
+                onClick={() => setSelectedBillId(null)}
+                className="p-2 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-zinc-500" />
+              </button>
+            </div>
+
+            <div className="flex-grow overflow-y-auto p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-zinc-50 dark:bg-zinc-800/40 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800 flex items-center justify-between group">
+                  <div>
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Debt (Header)</p>
+                    <p className="text-lg font-bold text-zinc-900 dark:text-zinc-50">{formatIDR(selectedBill.totalAmount || 0)}</p>
+                  </div>
+                  <button 
+                    onClick={() => handleUpdateTotalDebt(selectedBill)}
+                    className="p-2 text-zinc-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                    title="Edit Total Debt"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className={`p-4 rounded-2xl border transition-colors ${
+                  Math.abs(unallocatedAmount) < 1 ? 'bg-emerald-50 border-emerald-100 dark:bg-emerald-900/10' : 'bg-rose-50 border-rose-100 dark:bg-rose-900/10'
+                }`}>
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Unallocated Balance</p>
+                  <p className={`text-lg font-bold ${Math.abs(unallocatedAmount) < 1 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {formatIDR(unallocatedAmount)}
+                  </p>
+                </div>
+              </div>
+
+              {Math.abs(unallocatedAmount) >= 1 && (
+                <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-xs text-amber-800 leading-relaxed">
+                    <p className="font-bold mb-1">Schedule Mismatch</p>
+                    <p>
+                      {unallocatedAmount > 0 
+                        ? `You have ${formatIDR(unallocatedAmount)} unallocated. Add more installments or increase item amounts to match the total debt.`
+                        : `Installments exceed debt by ${formatIDR(Math.abs(unallocatedAmount))}. Reduce item amounts or increase the total debt header.`
+                      }
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-50">Installment Schedule</h4>
+                  <button 
+                    onClick={() => handleAddManualItem(selectedBill)}
+                    className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 uppercase bg-emerald-50 px-2 py-1 rounded-md hover:bg-emerald-100 transition-colors dark:bg-emerald-900/20"
+                  >
+                    <PlusCircle className="w-3 h-3" /> Add Item
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {selectedItems.map((item) => {
+                    const isOverdue = item.status === 'pending' && new Date(item.dueDate) < new Date();
+                    
+                    return (
+                      <div key={item.id} className={`group flex items-center justify-between p-4 bg-white dark:bg-zinc-900 border rounded-2xl transition-all shadow-sm ${
+                        item.status === 'paid' ? 'border-zinc-100 dark:border-zinc-800 bg-zinc-50/50' : 
+                        isOverdue ? 'border-rose-200 bg-rose-50/20' : 'border-zinc-200 dark:border-zinc-700'
+                      }`}>
+                        <div className="flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            item.status === 'paid' ? 'bg-emerald-100 text-emerald-600' : 
+                            isOverdue ? 'bg-rose-100 text-rose-600' : 'bg-zinc-100 text-zinc-400'
+                          }`}>
+                            {item.status === 'paid' ? <Check className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-zinc-900 dark:text-zinc-50">{formatIDR(item.amount)}</p>
+                            <p className={`text-[10px] font-bold ${isOverdue ? 'text-rose-500' : 'text-zinc-500'}`}>
+                              {new Date(item.dueDate).toLocaleDateString(undefined, { dateStyle: 'long' })}
+                              {isOverdue && ' (Overdue)'}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          {item.status === 'pending' && (
+                            <button 
+                              onClick={() => handlePayItem(selectedBill, item)}
+                              className="flex items-center gap-1 bg-emerald-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold hover:bg-emerald-500 transition-colors"
+                            >
+                              <ArrowUpRight className="w-3 h-3" /> Pay
+                            </button>
+                          )}
+                          
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                            <button 
+                              onClick={() => handleUpdateItemAmount(item, selectedBill)}
+                              className="p-1.5 text-zinc-400 hover:text-emerald-600 transition-colors"
+                              title="Edit Amount"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteItem(item.id, selectedBill)}
+                              className="p-1.5 text-zinc-400 hover:text-rose-600 transition-colors"
+                              title="Delete Item"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 bg-zinc-50 dark:bg-zinc-800/50 border-t border-zinc-100 dark:border-zinc-800 flex justify-end">
+              <button 
+                onClick={() => setSelectedBillId(null)}
+                className="bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900 px-6 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
+              >
+                Done
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

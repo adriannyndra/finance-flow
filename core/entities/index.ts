@@ -37,6 +37,8 @@ export interface Budget {
 }
 
 export type BillFrequency = 'monthly' | 'yearly';
+export type BillType = 'recurring' | 'installment' | 'one-time';
+export type BillItemStatus = 'pending' | 'paid' | 'skipped';
 
 export interface Bill {
   id: string;
@@ -49,4 +51,17 @@ export interface Bill {
   active: boolean;
   lastGeneratedMonth?: string; // YYYY-MM to prevent duplicate generation
   endDate?: string; // Format: YYYY-MM-DD
+  billType: BillType;
+  totalAmount?: number;
+}
+
+export interface BillItem {
+  id: string;
+  billId: string;
+  userId: string;
+  amount: number;
+  dueDate: string; // YYYY-MM-DD
+  paidAt?: string;
+  status: BillItemStatus;
+  transactionId?: string;
 }

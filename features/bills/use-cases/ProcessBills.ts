@@ -54,6 +54,16 @@ export class ProcessBills {
           date: transactionDate
         });
 
+        // Create the bill item (Detail)
+        await this.billRepository.addBillItem(userId, {
+          billId: bill.id,
+          amount: bill.amount,
+          dueDate: transactionDate,
+          status: 'paid',
+          paidAt: new Date().toISOString(),
+          transactionId: newTransaction.id
+        });
+
         // Update the bill's last generated month to prevent double generation
         await this.billRepository.updateBill(bill.id, {
           lastGeneratedMonth: currentMonth
