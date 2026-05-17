@@ -4,22 +4,25 @@ import { SupabaseBillRepository } from '../infrastructure/SupabaseBillRepository
 export class AddBill {
   constructor(private repository: SupabaseBillRepository) {}
 
-  async execute(userId: string, bill: Omit<Bill, 'id' | 'userId'>): Promise<Bill> {
+  async execute(userId: string, bill: Omit<Bill, 'id' | 'userId'>, tenure?: number): Promise<Bill> {
     const newBill = await this.repository.addBill(userId, bill);
 
     // If it's an installment with a total amount, pre-generate the schedule
-    if (newBill.billType === 'installment' && newBill.totalAmount && newBill.amount > 0) {
-      const numberOfPayments = Math.ceil(newBill.totalAmount / newBill.amount);
+    if (newBill.billType === 'installment' && newBill.totalAmount) {
+      // Use tenure to split, or fall back to monthly amount if tenure isn't provided
+      const numberOfPayments = tenure || (newBill.amount > 0 ? Math.ceil(newBill.totalAmount / newBill.amount) : 0);
+      const splitAmount = tenure ? Math.floor(newBill.totalAmount / tenure) : newBill.amount;
       const now = new Date();
 
+      let allocatedTotal = 0;
       for (let i = 0; i < numberOfPayments; i++) {
         const dueDate = new Date(now.getFullYear(), now.getMonth() + i, newBill.billing_day);
 
-        // Ensure amount doesn't exceed remaining total for the last payment
-        const remainingTotal = newBill.totalAmount - (i * newBill.amount);
-        const itemAmount = Math.min(newBill.amount, remainingTotal);
+        // On the last payment, take the remainder to ensure exact total match
+        const isLast = i === numberOfPayments - 1;
+        const itemAmount = isLast ? (newBill.totalAmount - allocatedTotal) : splitAmount;
 
-        if (itemAmount <= 0) break;
+        if (itemAmount <= 0 && !isLast) continue;
 
         await this.repository.addBillItem(userId, {
           billId: newBill.id,
@@ -27,10 +30,12 @@ export class AddBill {
           dueDate: dueDate.toISOString().split('T')[0],
           status: 'pending'
         });
+        allocatedTotal += itemAmount;
       }
     }
 
     return newBill;
   }
+
 }
 

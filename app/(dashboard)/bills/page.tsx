@@ -101,6 +101,7 @@ export default function BillsPage() {
     name: '',
     amountDisplay: '',
     totalAmountDisplay: '',
+    tenure: 1,
     category: EXPENSE_CATEGORIES[0],
     frequency: 'monthly' as BillFrequency,
     billType: 'recurring' as BillType,
@@ -135,6 +136,7 @@ export default function BillsPage() {
       name: bill.name,
       amountDisplay: formatNumberInput(bill.amount.toString()),
       totalAmountDisplay: bill.totalAmount ? formatNumberInput(bill.totalAmount.toString()) : '',
+      tenure: billItems[bill.id]?.length || 1,
       category: bill.category,
       frequency: bill.frequency,
       billType: bill.billType,
@@ -146,15 +148,24 @@ export default function BillsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const amount = parseNumberInput(formData.amountDisplay);
-    const totalAmount = formData.totalAmountDisplay ? parseNumberInput(formData.totalAmountDisplay) : undefined;
-    if (!amount || !userId) return;
+    const amountStr = parseNumberInput(formData.amountDisplay);
+    const totalAmountStr = parseNumberInput(formData.totalAmountDisplay);
+    if (!userId) return;
+
+    // Validation:
+    // For installments, we need totalAmount and tenure
+    // For others, we need amount
+    if (formData.billType === 'installment' && !totalAmountStr) return alert('Total Debt is required for installments');
+    if (formData.billType !== 'installment' && !amountStr) return alert('Amount is required');
 
     setIsSaving(true);
     try {
+      const amount = amountStr ? parseFloat(amountStr) : 0;
+      const totalAmount = totalAmountStr ? parseFloat(totalAmountStr) : undefined;
+
       const billData: any = {
         name: formData.name,
-        amount: parseFloat(amount),
+        amount: formData.billType === 'installment' && totalAmount ? Math.floor(totalAmount / formData.tenure) : amount,
         category: formData.category,
         frequency: formData.frequency,
         billType: formData.billType,
@@ -178,7 +189,7 @@ export default function BillsPage() {
         const newBill = await addBillUseCase.execute(userId, {
           ...billData,
           active: true
-        });
+        }, formData.billType === 'installment' ? formData.tenure : undefined);
         setBills([...bills, newBill]);
         await fetchBillItems(userId);
       }
@@ -189,6 +200,7 @@ export default function BillsPage() {
         name: '',
         amountDisplay: '',
         totalAmountDisplay: '',
+        tenure: 1,
         category: EXPENSE_CATEGORIES[0],
         frequency: 'monthly',
         billType: 'recurring',
@@ -336,7 +348,7 @@ export default function BillsPage() {
   };
 
   const sections = [
-    { id: 'recurring' as BillType, label: 'Recurring', icon: RefreshCw, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { id: 'recurring' as BillType, label: 'Subscriptions', icon: RefreshCw, color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { id: 'installment' as BillType, label: 'Installments & Debt', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
     { id: 'one-time' as BillType, label: 'One-time Bills', icon: CreditCard, color: 'text-blue-600', bg: 'bg-blue-50' },
   ];
@@ -396,32 +408,48 @@ export default function BillsPage() {
                   <option value="one-time">One-time Bill</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    {formData.billType === 'recurring' ? 'Monthly Amount' : 'Payment Amount'} (Rp)
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.amountDisplay}
-                  onChange={(e) => setFormData({ ...formData, amountDisplay: formatNumberInput(e.target.value) })}
-                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
-                  placeholder="0"
-                />
-              </div>
-              {formData.billType === 'installment' && (
+              
+              {formData.billType === 'installment' ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Total Debt Amount</label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.totalAmountDisplay}
+                      onChange={(e) => setFormData({ ...formData, totalAmountDisplay: formatNumberInput(e.target.value) })}
+                      className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 font-bold text-emerald-600"
+                      placeholder="Total amount"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Tenure (Months)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      readOnly={!!editingId}
+                      value={formData.tenure}
+                      onChange={(e) => setFormData({ ...formData, tenure: parseInt(e.target.value) })}
+                      className={`mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 ${editingId ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    />
+                    {editingId && <p className="text-[10px] text-zinc-500 mt-1">Tenure cannot be changed once created.</p>}
+                  </div>
+                </>
+              ) : (
                 <div>
-                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Total Debt Amount</label>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Amount (Rp)</label>
                   <input
                     type="text"
                     required
-                    value={formData.totalAmountDisplay}
-                    onChange={(e) => setFormData({ ...formData, totalAmountDisplay: formatNumberInput(e.target.value) })}
-                    className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 font-bold text-emerald-600"
-                    placeholder="Total amount to be paid"
+                    value={formData.amountDisplay}
+                    onChange={(e) => setFormData({ ...formData, amountDisplay: formatNumberInput(e.target.value) })}
+                    className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
+                    placeholder="0"
                   />
                 </div>
               )}
+
               <div>
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Category</label>
                 <select
