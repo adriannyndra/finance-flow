@@ -697,11 +697,6 @@ export default function BillsPage() {
                         return (
                           <div key={bill.id} className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 relative group flex flex-col">
                             <div className="absolute top-4 right-4 flex items-center gap-2">
-                              {bill.endDate && (
-                                <span className="text-[10px] font-bold text-zinc-400 uppercase bg-zinc-50 px-2 py-1 rounded-md dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700">
-                                  {bill.billType === 'one-time' ? 'Due' : 'Until'} {new Date(bill.endDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                                </span>
-                              )}
                               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button onClick={() => handleEdit(bill)} className="p-2 text-zinc-400 hover:text-emerald-600 transition-colors"><Edit2 className="w-4 h-4" /></button>
                                 <button onClick={() => deleteBill(bill.id)} className="p-2 text-zinc-400 hover:text-rose-600 transition-colors"><Trash2 className="w-4 h-4" /></button>
@@ -732,9 +727,18 @@ export default function BillsPage() {
 
                               <div className="flex justify-between text-sm">
                                 <span className="text-zinc-500">{bill.billType === 'one-time' ? 'Deadline' : 'Billing'}</span>
-                                <span className="font-medium text-zinc-900 dark:text-zinc-50">
-                                    {bill.billType === 'one-time' ? bill.endDate : `Every ${bill.billing_day}${bill.billing_day === 1 ? 'st' : bill.billing_day === 2 ? 'nd' : bill.billing_day === 3 ? 'rd' : 'th'}`}
-                                </span>
+                                <div className="text-right">
+                                    <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                                        {bill.billType === 'one-time' 
+                                            ? (bill.endDate ? new Date(bill.endDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '-') 
+                                            : `Every ${bill.billing_day}${bill.billing_day === 1 ? 'st' : bill.billing_day === 2 ? 'nd' : bill.billing_day === 3 ? 'rd' : 'th'}`}
+                                    </span>
+                                    {bill.endDate && bill.billType !== 'one-time' && (
+                                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-tight mt-0.5">
+                                            Until {new Date(bill.endDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                        </p>
+                                    )}
+                                </div>
                               </div>
                             </div>
 
