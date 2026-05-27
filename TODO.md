@@ -5,6 +5,7 @@
 ---
 
 ## 📊 Statistics Refinements (Current Focus)
+- [ ] **Fix Tooltip Double-Rendering**: Resolve issue where Statistics tooltips display double labels (e.g., "Expense: Expense: Rp ...") due to custom formatter logic.
 - [ ] **Budget Heatmap**: Identify categories that are consistently over-budget over the last 6 months.
 
 ## 📊 Bill Management Refinements

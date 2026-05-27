@@ -464,10 +464,9 @@ export default function StatisticsPage() {
                 <Tooltip 
                   formatter={(value: number, name: string, entry: any) => {
                     const color = (entry.color === '#e2e8f0' || entry.fill === '#e2e8f0') ? '#18181b' : (entry.color || entry.fill || '#18181b');
-                    return [
-                      <span key="val" style={{ color }}>{formatIDR(value)}</span>,
-                      <span key="name" style={{ color }}>{name}</span>
-                    ];
+                    return (
+                      <span key="val" style={{ color }}>{name}: {formatIDR(value)}</span>
+                    );
                   }}
                   contentStyle={{ backgroundColor: '#fff', borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: 'bold' }}
                   labelStyle={{ color: '#18181b' }}
@@ -531,10 +530,9 @@ export default function StatisticsPage() {
                 <Tooltip 
                   formatter={(value: number, name: string, entry: any) => {
                     const color = (entry.color === '#e2e8f0' || entry.fill === '#e2e8f0') ? '#18181b' : (entry.color || entry.fill || '#18181b');
-                    return [
-                      <span key="val" style={{ color }}>{formatIDR(value)}</span>,
-                      <span key="name" style={{ color }}>{name}</span>
-                    ];
+                    return (
+                      <span key="val" style={{ color }}>{name}: {formatIDR(value)}</span>
+                    );
                   }}
                   contentStyle={{ backgroundColor: '#fff', borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: 'bold' }}
                   labelStyle={{ color: '#18181b' }}
@@ -598,10 +596,12 @@ export default function StatisticsPage() {
                   tickLine={false}
                 />
                 <Tooltip 
-                  formatter={(value: number, name: string, entry: any) => [
-                    <span key="val" style={{ color: (entry.color === '#e2e8f0' || entry.fill === '#e2e8f0') ? '#18181b' : (entry.color || entry.fill || '#18181b') }}>{formatIDR(value)}</span>,
-                    <span key="name" style={{ color: '#18181b' }}>{name}</span>
-                  ]}
+                  formatter={(value: number, name: string, entry: any) => {
+                    const color = (entry.color === '#e2e8f0' || entry.fill === '#e2e8f0') ? '#18181b' : (entry.color || entry.fill || '#18181b');
+                    return (
+                      <span key="val" style={{ color }}>{name}: {formatIDR(value)}</span>
+                    );
+                  }}
                   contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e4e4e7', fontSize: '12px', fontWeight: 'bold' }}
                   labelStyle={{ color: '#18181b' }}
                 />
@@ -655,10 +655,12 @@ export default function StatisticsPage() {
                   tickLine={false}
                 />
                 <Tooltip 
-                  formatter={(value: number, name: string, entry: any) => [
-                    <span key="val" style={{ color: (entry.color === '#e2e8f0' || entry.fill === '#e2e8f0') ? '#18181b' : (entry.color || entry.fill || '#18181b') }}>{formatIDR(value)}</span>,
-                    <span key="name" style={{ color: '#18181b' }}>{name}</span>
-                  ]}
+                  formatter={(value: number, name: string, entry: any) => {
+                    const color = (entry.color === '#e2e8f0' || entry.fill === '#e2e8f0') ? '#18181b' : (entry.color || entry.fill || '#18181b');
+                    return (
+                      <span key="val" style={{ color }}>{name}: {formatIDR(value)}</span>
+                    );
+                  }}
                   contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e4e4e7', fontSize: '12px', fontWeight: 'bold' }}
                   labelStyle={{ color: '#18181b' }}
                 />
@@ -709,10 +711,12 @@ export default function StatisticsPage() {
                 domain={[0, 100]}
               />
               <Tooltip 
-                formatter={(value: number, name: string, entry: any) => [
-                  <span key="val" style={{ color: entry.fill }}>{value}%</span>,
-                  <span key="name" style={{ color: '#18181b' }}>Savings Rate</span>
-                ]}
+                formatter={(value: number, name: string, entry: any) => {
+                  const color = entry.fill;
+                  return (
+                    <span key="val" style={{ color }}>Savings Rate: {value}%</span>
+                  );
+                }}
                 contentStyle={{ 
                   backgroundColor: '#fff',
                   borderRadius: '16px', 
