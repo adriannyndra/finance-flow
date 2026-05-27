@@ -29,6 +29,20 @@ A modern personal finance management application built with **Next.js**, **Supab
 - **Charts**: [Recharts](https://recharts.org/)
 - **Icons**: [Lucide React](https://lucide.dev/)
 
+## 🐳 Docker Support
+
+You can run this application using Docker for a consistent environment.
+
+### Production Build
+```bash
+docker compose up --build
+```
+
+### Development Mode (with hot-reloading)
+```bash
+docker compose -f docker-compose.dev.yml up
+```
+
 ## 🏗️ Architecture
 
 This project strictly adheres to **Clean Architecture** using **Vertical Slices**. This ensures that business logic is decoupled from the framework and infrastructure.

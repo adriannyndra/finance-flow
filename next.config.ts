@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   /* config options here */
   // This helps Next.js understand it's behind a proxy like Cloudflare
   devIndicators: {
