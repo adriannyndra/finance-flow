@@ -125,7 +125,7 @@ Use an **Open Finance Aggregator** to handle the complex "SNAP" (Standar Nasiona
 | Recurring Bills| High | Medium | ✅ Implemented |
 | CSV Importer | Medium | Medium | ✅ Implemented |
 | CSV Exporter | Medium | Low | ✅ Implemented |
-| Wishlist & Savings Goals| Medium | Medium | 💡 Idea |
+| Wishlist & Savings Goals| Medium | Medium | ✅ Implemented |
 | Language Localization (i18n) | Medium | Medium | 💡 Idea |
 | Customizable Layout | High | High | 💡 Idea |
 | Advanced Privacy | Medium | Medium | 💡 Idea |

@@ -2,17 +2,18 @@ import { SupabaseBudgetRepository } from '../infrastructure/SupabaseBudgetReposi
 import { SupabaseTransactionRepository } from '@/features/transactions/infrastructure/SupabaseTransactionRepository';
 
 export interface BudgetProgress {
-  id: string; // Add ID
+  id?: string;
   category: string;
   budgetAmount: number;
   spentAmount: number;
   remainingAmount: number;
   percentage: number;
+  hasBudget: boolean;
 }
 
 export class GetBudgetProgress {
   constructor(
-    private budgetRepository: SupabaseBudgetRepository,
+    private budgetRepository: SupabaseBudgetRepository,      
     private transactionRepository: SupabaseTransactionRepository
   ) {}
 
@@ -23,18 +24,27 @@ export class GetBudgetProgress {
     // Filter transactions by month
     const monthTransactions = transactions.filter(t => t.date.startsWith(month) && t.type === 'expense');
 
-    const progress: BudgetProgress[] = budgets.map(budget => {
+    // Get all categories that either have a budget OR have spending
+    const budgetCategories = budgets.map(b => b.category);
+    const spendingCategories = monthTransactions.map(t => t.category);
+    const allCategories = Array.from(new Set([...budgetCategories, ...spendingCategories]));
+
+    const progress: BudgetProgress[] = allCategories.map(category => {
+      const budget = budgets.find(b => b.category === category);
       const spent = monthTransactions
-        .filter(t => t.category === budget.category)
+        .filter(t => t.category === category)
         .reduce((sum, t) => sum + t.amount, 0);
 
+      const budgetAmount = budget ? budget.amount : 0;
+
       return {
-        id: budget.id,
-        category: budget.category,
-        budgetAmount: budget.amount,
+        id: budget?.id,
+        category: category,
+        budgetAmount: budgetAmount,
         spentAmount: spent,
-        remainingAmount: budget.amount - spent,
-        percentage: budget.amount > 0 ? (spent / budget.amount) * 100 : 0
+        remainingAmount: budgetAmount - spent,
+        percentage: budgetAmount > 0 ? (spent / budgetAmount) * 100 : (spent > 0 ? 100 : 0),
+        hasBudget: !!budget
       };
     });
 

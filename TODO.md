@@ -4,16 +4,11 @@
 
 ---
 
-## 📊 Bill Management Refinements
-- [ ] **Mismatch Resolution**: Improve the "Mismatch detected" UI in Bill cards to offer a "Re-sync" or "Auto-fix" option for installment schedules.
-- [ ] **End Date Buffer**: Add a "Buffer" month option when auto-calculating End Dates to account for interest or variable billing cycles.
-- [ ] **Quick Reconcile All**: Add a global button at the top of the Bills page to reconcile history for ALL bills at once.
+## 📊 Statistics Refinements (Current Focus)
+- [ ] **Budget Heatmap**: Identify categories that are consistently over-budget over the last 6 months.
 
-## 🛠️ UI/UX Improvements
-- [ ] **Monthly Savings KPI**: Add a card to the Dashboard/Statistics showing (Income - Expense - Bills Paid) for the current month.
-- [ ] **Investment Details**: Enable clicking on an investment to see price history chart (similar to Transactions history).
-- [ ] **Global Search**: Add a command-palette style search (Ctrl+K) to quickly jump to transactions or bills.
-- [ ] (Ongoing) General CSS cleanup for mobile-first responsiveness.
+## 📊 Bill Management Refinements
+- [ ] **End Date Buffer**: Add a "Buffer" month option when auto-calculating End Dates to account for interest or variable billing cycles.
 
 ## 🧪 Testing & Reliability
 - [ ] **Validation Logic**: Add Zod schemas for Repository inputs to prevent invalid data from reaching Supabase.

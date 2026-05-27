@@ -16,7 +16,9 @@ A modern personal finance management application built with **Next.js**, **Supab
   - **Historical Reports**: Stats include both active and archived commitments for complete reporting.
   - **Cash Flow**: Track monthly income vs. expenses over time.
 - **Transactions**: Track income and expenses with advanced filtering, sorting, and Lucide-powered UI.
+- **Wishlist & Savings Goals**: Set and track long-term saving targets integrated directly with your monthly budget.
 - **Investments**: Monitor your portfolio and stock history with interactive charts.
+- **Advanced Statistics**: Analyze month-over-month cash flow, net worth trends, and investment performance with visual insights.
 - **Privacy Masking**: Built-in user-derived masking to keep financial amounts obscured in the database.
 - **Responsive Design**: Minimalist, mobile-first navigation with icon-only bottom bar.
 
@@ -71,8 +73,10 @@ For more details, see [CLEAN_ARCHITECTURE.md](./CLEAN_ARCHITECTURE.md).
 ## 📚 Project Documentation
 
 - [Project Intelligence (Gemini)](./GEMINI.md): Team-shared conventions, security, and workflows.
-- [Clean Architecture Guide](./CLEAN_ARCHITECTURE.md): Architectural patterns and guidelines.
+- [Clean Architecture](./CLEAN_ARCHITECTURE.md): Architectural patterns and guidelines.
+- [Database Schema](./DATABASE_SCHEMA.md): Supabase table structures and masking logic.
 - [Agent Management](./AGENTS.md): Guide for working with project agents.
+
 - [Todo List](./TODO.md): Task tracking and backlog.
 
 ## 📜 License

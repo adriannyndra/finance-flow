@@ -14,6 +14,7 @@ import { formatIDR } from '@/core/formatters/currency';
 
 interface DashboardChartProps {
   transactions: Transaction[];
+  title?: string;
 }
 
 const COLORS = [
@@ -30,7 +31,7 @@ const COLORS = [
   '#a855f7', // Purple
 ];
 
-export default function DashboardChart({ transactions }: DashboardChartProps) {
+export default function DashboardChart({ transactions, title }: DashboardChartProps) {
   const chartData = useMemo(() => {
     const expenseTransactions = transactions.filter(t => t.type === 'expense');
     const categoryTotals: Record<string, number> = {};
@@ -46,24 +47,24 @@ export default function DashboardChart({ transactions }: DashboardChartProps) {
 
   if (chartData.length === 0) {
     return (
-      <div className="h-64 flex flex-col items-center justify-center bg-white rounded-2xl border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800">
-        <p className="text-zinc-500 text-sm">Belum ada data pengeluaran untuk ditampilkan.</p>
+      <div className="h-64 flex flex-col items-center justify-center opacity-50">
+        <p className="text-zinc-500 text-sm font-medium text-center italic">No expense data recorded.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 h-[400px] flex flex-col">
-      <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50 mb-4">Pengeluaran per Kategori</h3>
-      <div className="flex-1 w-full">
+    <div className="w-full h-full flex flex-col">
+      {title && <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6 text-center">{title}</h3>}
+      <div className="flex-1 w-full min-h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={chartData}
               cx="50%"
               cy="50%"
-              innerRadius={60}
-              outerRadius={80}
+              innerRadius={70}
+              outerRadius={90}
               paddingAngle={5}
               dataKey="value"
             >
@@ -72,19 +73,24 @@ export default function DashboardChart({ transactions }: DashboardChartProps) {
               ))}
             </Pie>
             <Tooltip
-              formatter={(value: number) => formatIDR(value)}
+              formatter={(value: number, name: string, entry: any) => [
+                <span key="val" style={{ color: entry.color || entry.payload.fill || '#18181b' }}>{formatIDR(value)}</span>,
+                <span key="name" style={{ color: '#18181b' }}>{name}</span>
+              ]}
               contentStyle={{
                 backgroundColor: '#fff',
-                borderRadius: '12px',
-                border: '1px solid #e4e4e7',
+                borderRadius: '16px',
+                border: 'none',
                 boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                fontSize: '12px',
+                fontWeight: 'bold'
               }}
             />
             <Legend 
               verticalAlign="bottom" 
               height={36}
               iconType="circle"
-              formatter={(value) => <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{value}</span>}
+              formatter={(value) => <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-tighter">{value}</span>}
             />
           </PieChart>
         </ResponsiveContainer>

@@ -47,6 +47,25 @@ The bottom navigation bar has been simplified for a cleaner appearance.
 - **Change**: Text labels under icons have been removed.
 - **Interaction**: Icons use the `title` attribute for accessibility and hover hints.
 
+### Polished Modal Experience
+To maintain a high-quality app feel, we avoid using default browser components (like `window.prompt` or `window.confirm`) for primary user interactions.
+- **Convention**: All interactive inputs (e.g., adding funds, confirming deletions) MUST use custom React modals.
+- **Implementation**: See `components/AddFundsModal.tsx` and `components/ConfirmationModal.tsx` for reference.
+- **Benefits**: Better styling consistency, support for dark mode, and improved mobile usability.
+
+### Wishlist & Savings Ledger
+Wishlist contributions are not just balance updates; they are recorded as transactions to maintain cash flow accuracy.
+- **Logic**: 
+  - `Add Funds` = **Expense** transaction (Today's date).
+  - `Withdrawal` = **Income** transaction (Today's date).
+- **Categorization**: All wishlist transactions MUST use the system category `🎯 Wishlist` and include the `wishlistId` in the transaction metadata/record.
+
+### The Budget "Truth" Page
+The Budget page is the comprehensive view of monthly spending, regardless of whether a category was planned.
+- **Planned vs. Unplanned**: The UI explicitly separates categories with set limits from those without.
+- **Drill-down Pattern**: Every category progress card is a gateway to its transaction history. Clicking it MUST open a filtered view of transactions for that category and month.
+- **Distribution Analysis**: High-density categorical analysis (Pie charts) should be housed in a modal (e.g., `CategoryBreakdownModal`) to maintain page focus and reduce layout clutter.
+
 ## 📊 Analytics
 
 ### Bill Type Analytics
@@ -54,7 +73,20 @@ The Statistics page provides a high-level breakdown of financial commitments.
 - **Grouping**: Bills can be grouped by **Type** (Subscription vs. Installment vs. One-time).
 - **Historical Context**: The analysis includes **Archived** bills to ensure historical debt/spending is accurately represented in long-term reports.
 
-### Centralized Data Fetching
-Even for read-only pages like **Dashboard** and **Statistics**, data MUST be fetched via the relevant Repository (e.g., `SupabaseTransactionRepository`).
-- **Reason**: To ensure the **Unmasking** logic is applied consistently across the whole app.
-- **Mandate**: ANY new feature involving financial amounts MUST implement this masking/unmasking logic in its repository layer.
+### Bill Reconciliation (Auto-Link)
+To maintain data integrity between expected bills and actual bank transactions, the system includes a "Scan & Link" feature.
+- **Location**: `app/(dashboard)/bills/page.tsx` (`handleReconcile`)
+- **Logic**: Scans transaction history for unlinked expenses that match the bill's category or description.
+- **UX**: Uses `ConfirmationModal` to batch-create `ff_bill_items` and link them to existing `ff_transactions`.
+
+### Financial Terminology Support
+Complex financial views (like Statistics) include standardized informational support.
+- **Pattern**: Every major chart header MUST include an `(i)` Info button.
+- **Component**: Uses `components/InfoModal.tsx` to provide clear, categorized definitions of terms like "Net Worth", "Liabilities", and "Unplanned Spending".
+- **Styling**: Modals use the `zinc` and `rose/emerald/indigo` accent colors for semantic categorization of terms.
+
+### Polished Tooltip Contrast
+To ensure 100% visibility across Light and Dark modes, all tooltips follow a high-contrast pattern.
+- **Background**: Always solid white (`#fff`) with bold black text (`#18181b`) for labels.
+- **Values**: Values use the dynamic color of their series (Green/Red/etc.), with a dark fallback for light colors (like grey) to ensure readability on the white background.
+- **Format**: Follows the `Name: Value` single-line format for data points.

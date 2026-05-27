@@ -42,7 +42,7 @@ export default function DashboardPage() {
   
   // Table state
   const [sortOrder] = useState<'latest' | 'oldest'>('latest');
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(5);
   const [currentPage, setCurrentPage] = useState(1);
 
   const supabase = createClient();
@@ -121,6 +121,16 @@ export default function DashboardPage() {
   const totalExpenses = transactions
     .filter(t => t.type === 'expense')
     .reduce((acc, curr) => acc + curr.amount, 0);
+
+  const totalIncomeThisMonth = transactions
+    .filter(t => t.type === 'income' && t.date.startsWith(currentMonthStr))
+    .reduce((acc, curr) => acc + curr.amount, 0);
+
+  const totalExpensesThisMonth = transactions
+    .filter(t => t.type === 'expense' && t.date.startsWith(currentMonthStr))
+    .reduce((acc, curr) => acc + curr.amount, 0);
+
+  const monthlySurplus = totalIncomeThisMonth - totalExpensesThisMonth;
 
   const balance = totalIncome - totalExpenses;
 
@@ -237,15 +247,17 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 flex flex-col justify-center">
-          <p className="text-sm font-medium text-zinc-500 text-center">Manage Finances</p>
-          <div className="flex gap-2 mt-4">
-            <Link href="/transactions" className="flex-1 text-center bg-emerald-600 text-white py-2 rounded-lg text-xs font-bold hover:bg-emerald-500 transition-colors">
-              + Transaction
-            </Link>
-            <Link href="/investments" className="flex-1 text-center bg-zinc-900 text-white py-2 rounded-lg text-xs font-bold hover:bg-zinc-800 transition-colors dark:bg-zinc-800 dark:hover:bg-zinc-700">
-              + Asset
-            </Link>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800">
+          <p className="text-sm font-medium text-zinc-500">Monthly Surplus</p>
+          <p className={`text-2xl font-bold mt-1 ${monthlySurplus >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+            {formatIDR(monthlySurplus)}
+          </p>
+          <div className="flex items-center mt-4 text-xs font-medium text-zinc-400">
+            {monthlySurplus >= 0 ? (
+              <span className="flex items-center text-emerald-600"><TrendingUp className="w-3 h-3 mr-1" /> Great! You saved money this month.</span>
+            ) : (
+              <span className="flex items-center text-rose-600"><TrendingDown className="w-3 h-3 mr-1" /> Heads up: Over-spending this month.</span>
+            )}
           </div>
         </div>
       </div>
@@ -388,6 +400,7 @@ export default function DashboardPage() {
                   }}
                   className="bg-white border border-zinc-200 rounded-lg px-2 py-1.5 text-xs font-medium dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 outline-none focus:ring-1 focus:ring-emerald-500"
                 >
+                  <option value={5}>5 Rows</option>
                   <option value={10}>10 Rows</option>
                   <option value={50}>50 Rows</option>
                   <option value={100}>100 Rows</option>

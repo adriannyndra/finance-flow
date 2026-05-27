@@ -29,6 +29,7 @@ import { DeleteTransaction } from '@/features/transactions/use-cases/DeleteTrans
 import { ImportTransactions } from '@/features/transactions/use-cases/ImportTransactions';
 import { createClient } from '@/utils/supabase/client';
 import { CSVImporter } from '@/components/CSVImporter';
+import { ConfirmationModal } from '@/components/ConfirmationModal';
 
 const repository = new SupabaseTransactionRepository();
 const getUserTransactions = new GetUserTransactions(repository);
@@ -60,6 +61,19 @@ export default function TransactionsPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(getUserId());
+
+  // Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   // Filter & Sort State
   const [sortField, setSortField] = useState<'date' | 'amount' | 'category'>('date');
@@ -306,14 +320,21 @@ export default function TransactionsPage() {
   };
 
   const deleteTransaction = async (id: string) => {
-    if (!confirm('Delete this transaction?')) return;
-    try {
-      await deleteTransactionUseCase.execute(id);
-      setTransactions(transactions.filter(t => t.id !== id));
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      alert(`Error: ${message}`);
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Transaction',
+      message: 'Are you sure you want to delete this transaction? This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await deleteTransactionUseCase.execute(id);
+          setTransactions(transactions.filter(t => t.id !== id));
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          alert(`Error: ${message}`);
+        }
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
   };
 
   const handleImport = async (data: Omit<Transaction, 'id'>[]) => {
@@ -674,6 +695,14 @@ export default function TransactionsPage() {
           </div>
         )}
       </div>
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

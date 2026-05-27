@@ -7,6 +7,7 @@ export interface Transaction {
   description: string;
   date: string;
   type: TransactionType;
+  wishlistId?: string;
 }
 
 export interface Summary {
@@ -64,4 +65,17 @@ export interface BillItem {
   paidAt?: string;
   status: BillItemStatus;
   transactionId?: string;
+}
+
+export interface WishlistItem {
+  id: string;
+  userId: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  category: string;
+  priority: 'low' | 'medium' | 'high';
+  url?: string;
+  isPurchased: boolean;
+  createdAt: string;
 }

@@ -14,6 +14,7 @@ import { SupabaseTransactionRepository } from '@/features/transactions/infrastru
 import { formatIDR, formatNumberInput, parseNumberInput } from '@/core/formatters/currency';
 import { getUserId } from '@/utils/auth/get-user-id';
 import { createClient } from '@/utils/supabase/client';
+import { ConfirmationModal } from '@/components/ConfirmationModal';
 import { 
   Loader2, 
   RefreshCw, 
@@ -55,6 +56,21 @@ export default function BillsPage() {
   const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
+  // Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant?: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    variant: 'danger',
+  });
+
   const currentMonthStr = new Date().toISOString().slice(0, 7);
 
   const fetchBillItems = async (uid: string) => {
@@ -75,15 +91,25 @@ export default function BillsPage() {
     const targetMonth = specificMonth || currentMonthStr;
     const monthName = new Date(targetMonth + '-01').toLocaleString('en-US', { month: 'long' });
     
-    if (!userId || !confirm(`Mark ${bill.name} as paid for ${monthName}?`)) return;
-    try {
-      await markBillAsPaidUseCase.execute(userId, bill, targetMonth);
-      setBills(bills.map(b => b.id === bill.id ? { ...b, lastGeneratedMonth: targetMonth } : b));
-      fetchBillItems(userId);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      alert(`Error: ${message}`);
-    }
+    if (!userId) return;
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Confirm Payment',
+      message: `Mark ${bill.name} as paid for ${monthName}?`,
+      variant: 'info',
+      onConfirm: async () => {
+        try {
+          await markBillAsPaidUseCase.execute(userId, bill, targetMonth);
+          setBills(bills.map(b => b.id === bill.id ? { ...b, lastGeneratedMonth: targetMonth } : b));
+          fetchBillItems(userId);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          alert(`Error: ${message}`);
+        }
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
   };
 
   const getNextMonthStr = () => {
@@ -96,16 +122,25 @@ export default function BillsPage() {
   const nextMonthName = new Date(nextMonthStr + '-01').toLocaleString('en-US', { month: 'short' });
 
   const handlePayItem = async (bill: Bill, item: BillItem) => {
-    if (!userId || !confirm(`Pay this installment for ${item.dueDate}?`)) return;
-    try {
-      await payInstallmentItemUseCase.execute(userId, bill, item);
-      const billsData = await getBillsUseCase.execute(userId);
-      setBills(billsData);
-      fetchBillItems(userId);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      alert(`Error: ${message}`);
-    }
+    if (!userId) return;
+    setConfirmModal({
+      isOpen: true,
+      title: 'Confirm Installment Payment',
+      message: `Pay this installment for ${item.dueDate}?`,
+      variant: 'info',
+      onConfirm: async () => {
+        try {
+          await payInstallmentItemUseCase.execute(userId, bill, item);
+          const billsData = await getBillsUseCase.execute(userId);
+          setBills(billsData);
+          fetchBillItems(userId);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          alert(`Error: ${message}`);
+        }
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
   };
 
   const supabase = createClient();
@@ -267,38 +302,54 @@ export default function BillsPage() {
   };
 
   const deleteBill = async (id: string) => {
-    if (!confirm('Delete this bill? This will also delete all its payment history.')) return;
-    try {
-      await deleteBillUseCase.execute(id);
-      setBills(bills.filter(s => s.id !== id));
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      alert(`Error: ${message}`);
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Bill',
+      message: 'Delete this bill? This will also delete all its payment history. This action cannot be undone.',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteBillUseCase.execute(id);
+          setBills(bills.filter(s => s.id !== id));
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          alert(`Error: ${message}`);
+        }
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
   };
 
   const handleDeleteItem = async (itemId: string, bill: Bill) => {
-    if (!confirm('Delete this payment record?')) return;
-    try {
-      const items = billItems[bill.id] || [];
-      const itemToDelete = items.find(i => i.id === itemId);
-      if (!itemToDelete) return;
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Payment Record',
+      message: 'Delete this payment record? This action cannot be undone.',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          const items = billItems[bill.id] || [];
+          const itemToDelete = items.find(i => i.id === itemId);
+          if (!itemToDelete) return;
 
-      const currentItemsTotal = items.reduce((s, i) => s + i.amount, 0);
-      const isSynced = bill.totalAmount !== undefined && Math.abs(bill.totalAmount - currentItemsTotal) < 1;
+          const currentItemsTotal = items.reduce((s, i) => s + i.amount, 0);
+          const isSynced = bill.totalAmount !== undefined && Math.abs(bill.totalAmount - currentItemsTotal) < 1;
 
-      await repository.deleteBillItem(itemId);
-      
-      if (bill.billType === 'installment' && bill.totalAmount !== undefined && isSynced) {
-          const newTotal = bill.totalAmount - itemToDelete.amount;
-          const updated = await updateBillUseCase.execute(bill.id, { totalAmount: newTotal });
-          setBills(bills.map(b => b.id === bill.id ? updated : b));
+          await repository.deleteBillItem(itemId);
+          
+          if (bill.billType === 'installment' && bill.totalAmount !== undefined && isSynced) {
+              const newTotal = bill.totalAmount - itemToDelete.amount;
+              const updated = await updateBillUseCase.execute(bill.id, { totalAmount: newTotal });
+              setBills(bills.map(b => b.id === bill.id ? updated : b));
+          }
+          
+          if (userId) fetchBillItems(userId);
+        } catch (err: any) {
+          alert(err.message);
+        }
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
       }
-      
-      if (userId) fetchBillItems(userId);
-    } catch (err: any) {
-      alert(err.message);
-    }
+    });
   };
 
   const handleUpdateItemAmount = async (item: BillItem, bill: Bill) => {
@@ -387,40 +438,106 @@ export default function BillsPage() {
     }
   };
 
+  const handlePayAllDue = async () => {
+    const dueSubscriptions = groupedBills.recurring.filter(b => b.lastGeneratedMonth !== currentMonthStr);
+    if (dueSubscriptions.length === 0) {
+      alert('All subscriptions for this month are already paid.');
+      return;
+    }
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Pay All Due Subscriptions',
+      message: `Process ${dueSubscriptions.length} payments for the current month? This will generate ${dueSubscriptions.length} transactions and history records.`,
+      variant: 'info',
+      onConfirm: async () => {
+        setIsSaving(true);
+        try {
+          if (!userId) return;
+          for (const bill of dueSubscriptions) {
+            await markBillAsPaidUseCase.execute(userId, bill, currentMonthStr);
+          }
+          const data = await getBillsUseCase.execute(userId);
+          setBills(data);
+          await fetchBillItems(userId);
+        } catch (err: any) {
+          alert(`Error: ${err.message}`);
+        } finally {
+          setIsSaving(false);
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
+      }
+    });
+  };
+
+  const handleSyncTotalDebt = async (bill: Bill) => {
+    const items = billItems[bill.id] || [];
+    const actualTotal = items.reduce((sum, item) => sum + item.amount, 0);
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Sync Total Debt',
+      message: `Update the Total Debt header to match the sum of items (${formatIDR(actualTotal)})? This will resolve the mismatch warning.`,
+      variant: 'info',
+      onConfirm: async () => {
+        try {
+          const updated = await updateBillUseCase.execute(bill.id, { totalAmount: actualTotal });
+          setBills(bills.map(b => b.id === bill.id ? updated : b));
+        } catch (err: any) {
+          alert(err.message);
+        }
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
+
   const handleReconcile = async (bill: Bill) => {
     if (!userId) return;
     setLoading(true);
     try {
       const transactions = await transactionRepo.getTransactions(userId);
       const items = billItems[bill.id] || [];
-      const existingTxIds = new Set(items.map(i => i.transactionId).filter(Boolean));
-      
+      const linkedIds = new Set(items.map(i => i.transactionId));
+
+      // Find transactions that match category or description and are not yet linked
       const matches = transactions.filter(t => 
-        (t.description.includes(`[Paid] ${bill.name}`) || t.description.includes(`[Recur] ${bill.name}`)) &&
-        Math.abs(t.amount - bill.amount) < 1 &&
-        !existingTxIds.has(t.id)
+        t.type === 'expense' && 
+        !linkedIds.has(t.id) &&
+        (t.category === bill.category || t.description.toLowerCase().includes(bill.name.toLowerCase()))
       );
 
       if (matches.length === 0) {
-        alert('No new matching transactions found with correct amount.');
+        alert('No unlinked transactions found matching this bill.');
         return;
       }
 
-      if (!confirm(`Found ${matches.length} matching payments. Link them to this bill's history?`)) return;
-
-      for (const tx of matches) {
-        await repository.addBillItem(userId, {
-          billId: bill.id,
-          amount: tx.amount,
-          dueDate: tx.date,
-          status: 'paid',
-          paidAt: tx.date,
-          transactionId: tx.id
-        });
-      }
-
-      await fetchBillItems(userId);
-      alert(`Successfully linked ${matches.length} payments.`);
+      setConfirmModal({
+        isOpen: true,
+        title: 'Scan & Link Transactions',
+        message: `Found ${matches.length} potential matching transactions. Link them to this bill? This will create ${matches.length} payment records and associate them with existing transactions.`,
+        variant: 'info',
+        onConfirm: async () => {
+          setIsSaving(true);
+          try {
+            for (const t of matches) {
+              await repository.addBillItem(userId, {
+                billId: bill.id,
+                amount: t.amount,
+                dueDate: t.date,
+                status: 'paid',
+                paidAt: new Date(t.date).toISOString(),
+                transactionId: t.id
+              });
+            }
+            await fetchBillItems(userId);
+          } catch (err: any) {
+            alert(err.message);
+          } finally {
+            setIsSaving(false);
+            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          }
+        }
+      });
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -534,7 +651,9 @@ export default function BillsPage() {
                       className={`mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 font-bold ${formData.billType === 'installment' ? 'text-amber-600' : 'text-emerald-600'}`}
                       placeholder="Total amount"
                     />
-                    <button type="button" onClick={solveForTotal} className="mt-1 p-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500" title="Calculate Total (Amount * Time)"><RefreshCw className="w-4 h-4" /></button>
+                    {formData.billType === 'recurring' && (
+                      <button type="button" onClick={solveForTotal} className="mt-1 p-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500" title="Calculate Total (Amount * Time)"><RefreshCw className="w-4 h-4" /></button>
+                    )}
                 </div>
               </div>
 
@@ -564,7 +683,9 @@ export default function BillsPage() {
                         className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
                         placeholder="0"
                     />
-                    <button type="button" onClick={solveForAmount} className="mt-1 p-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500" title="Calculate Monthly (Total / Time)"><RefreshCw className="w-4 h-4" /></button>
+                    {formData.billType === 'recurring' && (
+                      <button type="button" onClick={solveForAmount} className="mt-1 p-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500" title="Calculate Monthly (Total / Time)"><RefreshCw className="w-4 h-4" /></button>
+                    )}
                   </div>
                 </div>
               )}
@@ -607,7 +728,9 @@ export default function BillsPage() {
                         onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
                         className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
                     />
-                    <button type="button" onClick={solveForEndDate} className="mt-1 p-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500" title="Calculate End Date (Total / Amount)"><RefreshCw className="w-4 h-4" /></button>
+                    {formData.billType === 'recurring' && (
+                      <button type="button" onClick={solveForEndDate} className="mt-1 p-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500" title="Calculate End Date (Total / Amount)"><RefreshCw className="w-4 h-4" /></button>
+                    )}
                 </div>
               </div>
             </div>
@@ -682,9 +805,19 @@ export default function BillsPage() {
 
                 return (
                   <div key={section.id} className="space-y-6">
-                    <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-zinc-800 pb-2">
-                        <section.icon className={`w-5 h-5 ${section.color}`} />
-                        <h3 className="font-bold text-lg text-zinc-800 dark:text-zinc-100">{section.label}</h3>
+                    <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                        <div className="flex items-center gap-3">
+                          <section.icon className={`w-5 h-5 ${section.color}`} />
+                          <h3 className="font-bold text-lg text-zinc-800 dark:text-zinc-100">{section.label}</h3>
+                        </div>
+                        {section.id === 'recurring' && sectionBills.some(b => b.lastGeneratedMonth !== currentMonthStr) && (
+                          <button 
+                            onClick={handlePayAllDue}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 rounded-xl text-[10px] font-bold hover:bg-emerald-100 transition-all border border-emerald-100 dark:border-emerald-800"
+                          >
+                            <Check className="w-3 h-3" /> Pay All Due
+                          </button>
+                        )}
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {sectionBills.map((bill) => {
@@ -719,9 +852,17 @@ export default function BillsPage() {
                               )}
 
                               {bill.billType === 'installment' && bill.totalAmount !== undefined && Math.abs(currentUnallocated) > 1 && (
-                                <div className="flex items-center gap-2 text-[10px] font-bold p-2 rounded-lg mt-2 bg-rose-50 text-rose-600 dark:bg-rose-900/20">
-                                  <AlertTriangle className="w-3 h-3" />
-                                  <span>Mismatch detected in schedule</span>
+                                <div className="flex items-center justify-between gap-2 p-2 rounded-lg mt-2 bg-rose-50 text-rose-600 dark:bg-rose-900/20">
+                                  <div className="flex items-center gap-2 text-[10px] font-bold ">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    <span>Mismatch detected</span>
+                                  </div>
+                                  <button 
+                                    onClick={() => handleSyncTotalDebt(bill)}
+                                    className="px-2 py-1 bg-rose-600 text-white rounded-md text-[8px] font-bold hover:bg-rose-500 transition-colors uppercase"
+                                  >
+                                    Fix Now
+                                  </button>
                                 </div>
                               )}
 
@@ -888,6 +1029,15 @@ export default function BillsPage() {
           </div>
         </div>
       )}
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        variant={confirmModal.variant}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }
