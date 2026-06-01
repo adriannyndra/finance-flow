@@ -14,3 +14,6 @@
 ## 🧪 Testing & Reliability
 - [ ] **Validation Logic**: Add Zod schemas for Repository inputs to prevent invalid data from reaching Supabase.
 - [ ] **Error Boundaries**: Implement React Error Boundaries for major dashboard widgets.
+
+## 🏗️ Architecture & Domain Model
+- [ ] **Rich Domain Entities**: Refactor anemic entities (Transaction, Budget, Bill) to include business logic, self-validation, and domain rules (e.g., masking logic, status transitions) to move away from being simple data holders.
