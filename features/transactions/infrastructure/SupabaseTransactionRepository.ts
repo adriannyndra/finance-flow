@@ -73,12 +73,16 @@ export class SupabaseTransactionRepository {
   async addTransaction(userId: string, transaction: Omit<Transaction, 'id'>): Promise<Transaction> {
     const offset = this.getOffset(userId);
     const { wishlistId, ...rest } = transaction;
-    const maskedTransaction = {
+    
+    const maskedTransaction: any = {
       ...rest,
       amount: transaction.amount + offset,
       user_id: userId,
-      wishlist_id: wishlistId
     };
+
+    if (wishlistId) {
+      maskedTransaction.wishlist_id = wishlistId;
+    }
 
     const { data, error } = await this.supabase
       .from('ff_transactions')
@@ -92,18 +96,21 @@ export class SupabaseTransactionRepository {
       amount: data[0].amount - offset,
       wishlistId: data[0].wishlist_id
     };
-    }
+  }
 
-    async addTransactions(userId: string, transactions: Omit<Transaction, 'id'>[]): Promise<Transaction[]> {
+  async addTransactions(userId: string, transactions: Omit<Transaction, 'id'>[]): Promise<Transaction[]> {
     const offset = this.getOffset(userId);
     const maskedTransactions = transactions.map(t => {
       const { wishlistId, ...rest } = t;
-      return {
+      const masked: any = {
         ...rest,
         amount: t.amount + offset,
         user_id: userId,
-        wishlist_id: wishlistId
       };
+      if (wishlistId) {
+        masked.wishlist_id = wishlistId;
+      }
+      return masked;
     });
 
     const { data, error } = await this.supabase
@@ -118,13 +125,9 @@ export class SupabaseTransactionRepository {
       amount: t.amount - offset,
       wishlistId: t.wishlist_id
     }));
-    }
+  }
 
-    async updateTransaction(id: string, transaction: Partial<Transaction>): Promise<Transaction> {
-    // Note: We need the userId to get the offset.
-    // In your current implementation, updateTransaction only receives ID.
-    // We'll fetch the transaction first to get the user_id if amount is being updated.
-
+  async updateTransaction(id: string, transaction: Partial<Transaction>): Promise<Transaction> {
     let offset = 0;
     if (transaction.amount !== undefined) {
       const { data: current } = await this.supabase
@@ -140,9 +143,11 @@ export class SupabaseTransactionRepository {
 
     const { wishlistId, ...rest } = transaction;
     const updateData: any = { ...rest };
+    
     if (updateData.amount !== undefined) {
       updateData.amount = updateData.amount + offset;        
     }
+    
     if (wishlistId !== undefined) {
       updateData.wishlist_id = wishlistId;
     }
@@ -160,7 +165,7 @@ export class SupabaseTransactionRepository {
       amount: data[0].amount - offset,
       wishlistId: data[0].wishlist_id
     };
-    }
+  }
   async deleteTransaction(id: string): Promise<void> {
     const { error } = await this.supabase
       .from('ff_transactions')

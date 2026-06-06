@@ -11,7 +11,7 @@ interface CategoryBreakdownModalProps {
   title: string;
 }
 
-export function CategoryBreakdownModal({
+export default function CategoryBreakdownModal({
   isOpen,
   onClose,
   transactions,

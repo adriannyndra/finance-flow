@@ -31,6 +31,9 @@ import { createClient } from '@/utils/supabase/client';
 import { CSVImporter } from '@/components/CSVImporter';
 import { ConfirmationModal } from '@/components/ConfirmationModal';
 
+import { MonthYearPicker } from '@/components/design/MonthYearPicker';
+import { DatePicker } from '@/components/design/DatePicker';
+
 const repository = new SupabaseTransactionRepository();
 const getUserTransactions = new GetUserTransactions(repository);
 const addTransactionUseCase = new AddTransaction(repository);
@@ -75,12 +78,17 @@ export default function TransactionsPage() {
     onConfirm: () => {},
   });
 
+  // Default to current month and year
+  const now = new Date();
+  const currentMonthStr = (now.getMonth() + 1).toString().padStart(2, '0');
+  const currentYearStr = now.getFullYear().toString();
+
   // Filter & Sort State
   const [sortField, setSortField] = useState<'date' | 'amount' | 'category'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [filterCategory, setFilterCategory] = useState<string>('all');
-  const [filterMonth, setFilterMonth] = useState<string>('all'); // 01-12
-  const [filterYear, setFilterYear] = useState<string>('all');
+  const [filterMonth, setFilterMonth] = useState<string>(currentMonthStr); 
+  const [filterYear, setFilterYear] = useState<string>(currentYearStr);
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -108,6 +116,8 @@ export default function TransactionsPage() {
   // Derived years for filter
   const availableYears = useMemo(() => {
     const years = new Set<string>();
+    // Always include current year
+    years.add(new Date().getFullYear().toString());
     transactions.forEach(t => years.add(t.date.split('-')[0]));
     return Array.from(years).sort((a, b) => b.localeCompare(a));
   }, [transactions]);
@@ -476,13 +486,10 @@ export default function TransactionsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Date</label>
-                <input
-                  type="date"
-                  required
+                <DatePicker
+                  label="Date"
                   value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
+                  onChange={(val) => setFormData({ ...formData, date: val })}
                 />
               </div>
             </div>
@@ -504,46 +511,42 @@ export default function TransactionsPage() {
           <select
             value={filterCategory}
             onChange={(e) => { setFilterCategory(e.target.value); setCurrentPage(1); }}
-            className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-medium dark:bg-zinc-800 dark:border-zinc-700 outline-none"
+            className="bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-sm font-bold dark:bg-zinc-800 dark:border-zinc-700 outline-none hover:bg-zinc-100 transition-colors cursor-pointer"
           >
             <option value="all">All Categories</option>
             {ALL_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
           </select>
 
-          <select
-            value={filterMonth}
-            onChange={(e) => { setFilterMonth(e.target.value); setCurrentPage(1); }}
-            className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-medium dark:bg-zinc-800 dark:border-zinc-700 outline-none"
-          >
-            <option value="all">All Months</option>
-            {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map(m => (
-              <option key={m} value={m}>{new Date(2024, parseInt(m)-1).toLocaleString('default', { month: 'long' })}</option>
-            ))}
-          </select>
-
-          <select
-            value={filterYear}
-            onChange={(e) => { setFilterYear(e.target.value); setCurrentPage(1); }}
-            className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-medium dark:bg-zinc-800 dark:border-zinc-700 outline-none"
-          >
-            <option value="all">All Years</option>
-            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
+          <MonthYearPicker
+            selectedMonth={filterMonth}
+            selectedYear={filterYear}
+            availableYears={availableYears}
+            onChange={(m, y) => {
+              setFilterMonth(m);
+              setFilterYear(y);
+              setCurrentPage(1);
+            }}
+            onReset={() => {
+              setFilterMonth(currentMonthStr);
+              setFilterYear(currentYearStr);
+              setCurrentPage(1);
+            }}
+          />
 
           <button 
             onClick={() => { setFilterCategory('all'); setFilterMonth('all'); setFilterYear('all'); setCurrentPage(1); }}
-            className="text-xs font-bold text-emerald-600 hover:text-emerald-500"
+            className="text-xs font-bold text-zinc-400 hover:text-emerald-600 transition-colors"
           >
-            Reset Filters
+            Show All Time
           </button>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold text-zinc-400 uppercase">Rows:</span>
+          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Rows:</span>
           <select
             value={pageSize}
             onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-            className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs font-medium dark:bg-zinc-800 dark:border-zinc-700 outline-none"
+            className="bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-1.5 text-xs font-bold dark:bg-zinc-800 dark:border-zinc-700 outline-none hover:bg-zinc-100 transition-colors cursor-pointer"
           >
             <option value={10}>10</option>
             <option value={20}>20</option>
@@ -577,11 +580,9 @@ export default function TransactionsPage() {
                   {editingId === t.id ? (
                     <>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <input
-                          type="date"
+                        <DatePicker
                           value={editFormData.date}
-                          onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })}
-                          className="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm dark:bg-zinc-800 dark:border-zinc-700"
+                          onChange={(val) => setEditFormData({ ...editFormData, date: val })}
                         />
                       </td>
                       <td className="px-6 py-4">

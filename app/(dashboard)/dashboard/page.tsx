@@ -24,13 +24,17 @@ import { SupabaseBudgetRepository } from '@/features/budgets/infrastructure/Supa
 import { GetBudgetProgress, BudgetProgress } from '@/features/budgets/use-cases/GetBudgetProgress';
 import { SupabaseBillRepository } from '@/features/bills/infrastructure/SupabaseBillRepository';
 import { ProcessBills } from '@/features/bills/use-cases/ProcessBills';
+import { MarkBillAsPaid } from '@/features/bills/use-cases/MarkBillAsPaid';
 import { Bill } from '@/core/entities';
+import { ConfirmationModal } from '@/components/ConfirmationModal';
+import CategoryBreakdownModal from '@/components/CategoryBreakdownModal';
 
 const transactionRepository = new SupabaseTransactionRepository();
 const budgetRepository = new SupabaseBudgetRepository();
 const billRepository = new SupabaseBillRepository();
 const getBudgetProgress = new GetBudgetProgress(budgetRepository, transactionRepository);
 const processBills = new ProcessBills(billRepository, transactionRepository);
+const markBillAsPaidUseCase = new MarkBillAsPaid(billRepository, transactionRepository);
 
 export default function DashboardPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -39,6 +43,25 @@ export default function DashboardPage() {
   const [bills, setBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('User');
+
+  // Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant?: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    variant: 'info',
+  });
+
+  // Category Breakdown Modal State
+  const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('all');
   
   // Table state
   const [sortOrder] = useState<'latest' | 'oldest'>('latest');
@@ -59,7 +82,7 @@ export default function DashboardPage() {
         setUserName(displayName);
       }
 
-      // 1. Process recurring transactions (cleanup only)
+      // 1. Process recurring transactions (Cleanup only)
       await processBills.execute(uid);
 
       // 2. Fetch fresh data
@@ -95,6 +118,27 @@ export default function DashboardPage() {
       setLoading(false);
     }
   }, [supabase, currentMonthStr]);
+
+  const handlePayBill = (bill: Bill) => {
+    if (!userId) return;
+    
+    setConfirmModal({
+      isOpen: true,
+      title: 'Confirm Payment',
+      message: `Mark ${bill.name} as paid for ${new Date(currentMonthStr + '-01').toLocaleString('en-US', { month: 'long' })}? This will add an expense transaction.`,
+      variant: 'info',
+      onConfirm: async () => {
+        try {
+          await markBillAsPaidUseCase.execute(userId, bill, currentMonthStr);
+          await fetchDashboardData(userId);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          alert(`Error: ${message}`);
+        }
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
 
   useEffect(() => {
     const initDashboard = async () => {
@@ -265,15 +309,16 @@ export default function DashboardPage() {
       {/* Budget & Bills Detail */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Budget Overview */}
-        {budgetProgress.length > 0 && (
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 h-fit">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">Budget Summary (This Month)</h3>
-              <Link href="/budgets" className="text-sm font-bold text-emerald-600 hover:text-emerald-500 transition-colors">
-                View All &rarr;
-              </Link>
-            </div>
-            <div className="space-y-6">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 h-full flex flex-col">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">Budget Summary</h3>
+            <Link href="/budgets" className="text-sm font-bold text-emerald-600 hover:text-emerald-500 transition-colors">
+              {budgetProgress.length > 0 ? 'View All \u2192' : 'Start Planning \u2192'}
+            </Link>
+          </div>
+          
+          {budgetProgress.length > 0 ? (
+            <div className="space-y-6 flex-grow">
               {budgetProgress.slice(0, 4).map((p) => {
                 const isOver = p.percentage >= 100;
                 const isWarning = p.percentage >= 80;
@@ -299,11 +344,27 @@ export default function DashboardPage() {
                 );
               })}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="flex-grow flex flex-col items-center justify-center py-8 text-center space-y-4 bg-zinc-50/50 rounded-2xl border border-dashed border-zinc-200 dark:bg-zinc-800/30 dark:border-zinc-800">
+              <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center dark:bg-emerald-900/20">
+                <TrendingUp className="w-8 h-8 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-zinc-900 font-bold dark:text-zinc-50">No active budget plans for {new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}</p>
+                <p className="text-zinc-500 text-xs mt-1">Set spending limits to keep your finances on track.</p>
+              </div>
+              <Link 
+                href="/budgets" 
+                className="bg-emerald-600 text-white px-6 py-2 rounded-xl text-sm font-bold hover:bg-emerald-500 transition-colors shadow-sm"
+              >
+                Create Your First Budget
+              </Link>
+            </div>
+          )}
+        </div>
 
         {/* Bills Overview */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 h-fit">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 h-full flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">
               {showingNextMonth ? 'Estimated Total Bills' : 'Upcoming Bills'}
@@ -314,67 +375,68 @@ export default function DashboardPage() {
           </div>
           
           {showingNextMonth ? (
-            <div className="flex items-center justify-between p-6 rounded-2xl bg-zinc-50/50 border border-zinc-100 dark:bg-zinc-800/30 dark:border-zinc-800">
-              <div>
-                <p className="text-xs font-bold text-zinc-400 uppercase mb-1">Total Estimated</p>
-                <p className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">{formatIDR(totalNextMonthAmount)}</p>
-                <p className="text-[10px] text-zinc-500 mt-1 font-medium">
-                  {displayBills.length} bills scheduled for {new Date(nextMonthStr + "-01").toLocaleString('en-US', { month: 'long' })}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs font-bold text-zinc-400 uppercase mb-1 text-right">Next</p>
-                {nearestNextMonthBill ? (
-                  <div className="flex flex-col items-end">
-                    <p className="text-sm font-bold text-zinc-900 dark:text-zinc-50 max-w-[150px] truncate">{nearestNextMonthBill.name}</p>
-                    <p className="text-xs text-emerald-600 font-bold mt-0.5">
-                      {nearestNextMonthBill.billing_day} {new Date(nextMonthStr + "-01").toLocaleString('en-US', { month: 'long' })}
-                    </p>
-                    <p className="text-[10px] text-zinc-400 font-medium">{formatIDR(nearestNextMonthBill.amount)}</p>
-                  </div>
-                ) : (
-                  <p className="text-sm text-zinc-500">-</p>
-                )}
+            <div className="flex-grow flex flex-col justify-center">
+              <div className="flex items-center justify-between p-6 rounded-2xl bg-zinc-50/50 border border-zinc-100 dark:bg-zinc-800/30 dark:border-zinc-800">
+                <div>
+                  <p className="text-xs font-bold text-zinc-400 uppercase mb-1">Total Estimated</p>
+                  <p className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">{formatIDR(totalNextMonthAmount)}</p>
+                  <p className="text-[10px] text-zinc-500 mt-1 font-medium">
+                    {displayBills.length} bills scheduled for {new Date(nextMonthStr + "-01").toLocaleString('en-US', { month: 'long' })}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-bold text-zinc-400 uppercase mb-1 text-right">Next</p>
+                  {nearestNextMonthBill ? (
+                    <div className="flex flex-col items-end">
+                      <p className="text-sm font-bold text-zinc-900 dark:text-zinc-50 max-w-[150px] truncate">{nearestNextMonthBill.name}</p>
+                      <p className="text-xs text-emerald-600 font-bold mt-0.5">
+                        {nearestNextMonthBill.billing_day} {new Date(nextMonthStr + "-01").toLocaleString('en-US', { month: 'long' })}
+                      </p>
+                      <p className="text-[10px] text-zinc-400 font-medium">{formatIDR(nearestNextMonthBill.amount)}</p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-zinc-500">-</p>
+                  )}
+                </div>
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4 flex-grow overflow-y-auto">
               {displayBills.length > 0 ? (
                 displayBills.slice(0, 5).map((bill) => {
-                  // Calculate progress for bills with totalAmount
-                  // We need to fetch items for this, but currently dashboard doesn't fetch bill items.
-                  // For now, let's at least show the bar if totalAmount exists, even if 0% progress.
-                  // Ideally we should fetch bill items in fetchDashboardData.
                   return (
-                    <div key={bill.id} className="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30">
-                      <div className="flex items-center justify-between mb-2">
+                    <div key={bill.id} className="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 group">
+                      <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center text-amber-600 dark:bg-amber-900/20 dark:text-emerald-400">
                             <CreditCard className="w-4 h-4 text-amber-600" />
                           </div>
                           <div>
                             <p className="text-sm font-bold text-zinc-900 dark:text-zinc-50">{bill.name}</p>
-                            <p className="text-[10px] text-zinc-500 uppercase">Due date: {bill.billing_day} {new Date().toLocaleString('en-US', { month: 'short' })}</p>
+                            <p className="text-[10px] text-zinc-500 uppercase">Due: {bill.billing_day} {new Date().toLocaleString('en-US', { month: 'short' })}</p>
                           </div>
                         </div>
-                        <p className="text-sm font-bold text-zinc-900 dark:text-zinc-50">{formatIDR(bill.amount)}</p>
-                      </div>
-                      
-                      {bill.totalAmount !== undefined && (
-                        <div className="h-1 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden mt-2">
-                          <div 
-                            className={`h-full transition-all duration-500 ${bill.billType === 'installment' ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                            style={{ width: '0%' }} // Placeholder since we don't have items here yet
-                          />
+                        <div className="flex items-center gap-3">
+                          <p className="text-sm font-bold text-zinc-900 dark:text-zinc-50">{formatIDR(bill.amount)}</p>
+                          <button 
+                            onClick={() => handlePayBill(bill)}
+                            className="bg-emerald-600 text-white p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-emerald-500 shadow-sm"
+                            title="Confirm Payment"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                      )}
+                      </div>
                     </div>
                   );
                 })
               ) : (
-                <div className="py-8 text-center">
-                  <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                  <p className="text-sm text-zinc-500">All bills for this month are paid!</p>
+                <div className="py-8 text-center flex-grow flex flex-col justify-center">
+                  <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-3 dark:bg-emerald-900/20">
+                    <Check className="w-6 h-6 text-emerald-600" />
+                  </div>
+                  <p className="text-sm font-bold text-zinc-900 dark:text-zinc-50">All bills for this month are paid!</p>
+                  <p className="text-xs text-zinc-500 mt-1">Great job keeping up with your obligations.</p>
                 </div>
               )}
             </div>
@@ -383,8 +445,15 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1">
-          <DashboardChart transactions={transactions} />
+        <div className="lg:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800">
+          <DashboardChart 
+            transactions={transactions} 
+            title="Spending Breakdown"
+            onCategoryClick={(cat) => {
+              setSelectedCategory(cat);
+              setIsBreakdownOpen(true);
+            }}
+          />
         </div>
         <div className="lg:col-span-2">
           <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 overflow-hidden dark:bg-zinc-900 dark:border-zinc-800">
@@ -484,6 +553,22 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      <CategoryBreakdownModal
+        isOpen={isBreakdownOpen}
+        onClose={() => setIsBreakdownOpen(false)}
+        transactions={transactions}
+        initialCategory={selectedCategory}
+      />
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        variant={confirmModal.variant}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

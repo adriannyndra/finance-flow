@@ -14,22 +14,20 @@ To prevent casual data peeking in the database (Supabase), financial amounts acr
 
 ## ⚙️ Automation
 
-### Bill Automation (Recurring Transactions)
-Active bills are automatically converted into transactions for the **current month** only.
-- **Location**: `features/bills/use-cases/ProcessBills.ts`
-- **Trigger**: Called on the **Dashboard** page load.
-- **Logic**: 
-  - **Type Filtering**: ONLY processes bills where `billType === 'recurring'`.
-  - **Billing Day Trigger**: Only generates if `today's date >= billing_day`.
-  - **Duplicate Prevention**: Updates `lastGeneratedMonth` on the bill to ensure once-per-month creation.
-
-### Bill Archiving System
-The system automatically manages the lifecycle of a bill to keep the active list clean.
-- **Auto-Archive**: Bills are considered "Completed" when `totalPaid >= totalAmount`.
-- **UI Separation**: Completed bills are filtered out of the main sections and moved to a "History" view.
-- **Muted Styling**: Archived bills use grayscale/muted styles with line-through names to indicate they are no longer active obligations.
+### Bill Management (Manual Confirmation)
+To ensure user control, bills are NO LONGER automatically converted into transactions.
+- **Location**: `features/bills/use-cases/ProcessBills.ts` (Cleanup) & `app/(dashboard)/dashboard/page.tsx` (Trigger).
+- **UX**: Unpaid bills for the current month appear on the Dashboard with a **"Confirm Payment"** checkmark.
+- **Transaction Creation**: Transactions are only added to the ledger AFTER the user confirms the payment via the dashboard modal.
+- **Expiration Logic**: `ProcessBills.ts` automatically deactivates bills that have passed their `endDate`.
 
 ## 📝 User Experience
+
+### Universal Date Selection
+To maintain a high-fidelity experience, the application uses a custom-built Calendar component instead of the browser's default date picker.
+- **Component**: `components/design/DatePicker.tsx`.
+- **Implementation**: MUST be used for all date-related inputs (Transactions, Bills, Investments) to ensure consistent styling and mobile usability.
+- **Logic**: Handles ISO format (`YYYY-MM-DD`) and includes a "Select Today" quick action.
 
 ### Smart Triangle Logic (Bills Form)
 The Bill Add/Edit form uses manual "Refresh" buttons to solve for missing financial data.

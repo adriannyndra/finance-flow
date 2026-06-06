@@ -15,6 +15,7 @@ import { formatIDR, formatNumberInput, parseNumberInput } from '@/core/formatter
 import { getUserId } from '@/utils/auth/get-user-id';
 import { createClient } from '@/utils/supabase/client';
 import { ConfirmationModal } from '@/components/ConfirmationModal';
+import { DatePicker } from '@/components/design/DatePicker';
 import { 
   Loader2, 
   RefreshCw, 
@@ -717,21 +718,16 @@ export default function BillsPage() {
                   </div>
               )}
               <div className={formData.billType === 'one-time' ? 'col-span-1' : ''}>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    {formData.billType === 'one-time' ? 'Deadline Date' : 'End Date (Optional)'}
-                </label>
-                <div className="flex gap-2">
-                    <input
-                        type="date"
-                        required={formData.billType === 'one-time'}
-                        value={formData.endDate}
-                        onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                        className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
-                    />
-                    {formData.billType === 'recurring' && (
-                      <button type="button" onClick={solveForEndDate} className="mt-1 p-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500" title="Calculate End Date (Total / Amount)"><RefreshCw className="w-4 h-4" /></button>
-                    )}
-                </div>
+                <DatePicker
+                    label={formData.billType === 'one-time' ? 'Deadline Date' : 'End Date (Optional)'}
+                    value={formData.endDate}
+                    onChange={(val) => setFormData({ ...formData, endDate: val })}
+                />
+                {formData.billType === 'recurring' && (
+                  <button type="button" onClick={solveForEndDate} className="mt-2 w-full py-2 flex items-center justify-center gap-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500 text-xs font-bold" title="Calculate End Date (Total / Amount)">
+                    <RefreshCw className="w-4 h-4" /> Calculate End Date
+                  </button>
+                )}
               </div>
             </div>
             <button type="submit" disabled={isSaving} className="w-full bg-emerald-600 text-white py-2 rounded-lg font-bold hover:bg-emerald-500 transition-colors disabled:opacity-50">

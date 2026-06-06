@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { EXPENSE_CATEGORIES } from '@/features/transactions/domain/types';
 import { SupabaseBudgetRepository } from '@/features/budgets/infrastructure/SupabaseBudgetRepository';
 import { SupabaseTransactionRepository } from '@/features/transactions/infrastructure/SupabaseTransactionRepository';
 import { SupabaseWishlistRepository } from '@/features/wishlist/infrastructure/SupabaseWishlistRepository';
@@ -18,8 +17,6 @@ import { TransactionHistoryModal } from '@/components/TransactionHistoryModal';
 import { 
   Loader2, 
   Target, 
-  ChevronLeft, 
-  ChevronRight, 
   AlertCircle,
   CheckCircle2,
   Trash2,
@@ -29,6 +26,8 @@ import {
   History,
   AlertTriangle
 } from 'lucide-react';
+
+import { MonthYearPicker } from '@/components/design/MonthYearPicker';
 
 const budgetRepository = new SupabaseBudgetRepository();
 const transactionRepository = new SupabaseTransactionRepository();
@@ -67,13 +66,13 @@ export default function BudgetsPage() {
   });
 
   const [year, month] = currentMonth.split('-');
-  const months = [
+  const monthsNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
   const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 11 }, (_, i) => (currentYear - 5 + i).toString());
+  const availableYears = Array.from({ length: 11 }, (_, i) => (currentYear - 5 + i).toString());
 
   const fetchData = async (uid: string, m: string) => {
     setLoading(true);
@@ -116,7 +115,7 @@ export default function BudgetsPage() {
       ...historyModal,
       isOpen: true,
       title: `${p.category} History`,
-      subtitle: `Transactions for ${months[parseInt(month) - 1]} ${year}`,
+      subtitle: `Transactions for ${monthsNames[parseInt(month) - 1]} ${year}`,
       loading: true,
       transactions: []
     });
@@ -277,16 +276,6 @@ export default function BudgetsPage() {
     }
   };
 
-  const changeMonth = (delta: number) => {
-    const date = new Date(currentMonth + '-01');
-    date.setMonth(date.getMonth() + delta);
-    setCurrentMonth(date.toISOString().slice(0, 7));
-  };
-
-  const handlePickerChange = (newYear: string, newMonth: string) => {
-    setCurrentMonth(`${newYear}-${newMonth}`);
-  };
-
   const plannedBudgets = progress.filter(p => p.hasBudget);
   const unplannedBudgets = progress.filter(p => !p.hasBudget && p.spentAmount > 0);
 
@@ -317,36 +306,24 @@ export default function BudgetsPage() {
             Add Plan
           </button>
 
-          <div className="flex items-center gap-2 bg-white border border-zinc-200 p-1.5 rounded-xl dark:bg-zinc-900 dark:border-zinc-800">
-            <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-zinc-100 rounded-lg transition-colors dark:hover:bg-zinc-800">
-              <ChevronLeft className="w-5 h-5 text-zinc-500" />
-            </button>
-            
-            <div className="flex items-center gap-1 px-1">
-              <select
-                value={month}
-                onChange={(e) => handlePickerChange(year, e.target.value)}
-                className="bg-transparent text-sm font-bold outline-none cursor-pointer hover:text-emerald-600 transition-colors"
-              >
-                {months.map((m, i) => (
-                  <option key={m} value={String(i + 1).padStart(2, '0')}>{m}</option>
-                ))}
-              </select>
-              <select
-                value={year}
-                onChange={(e) => handlePickerChange(e.target.value, month)}
-                className="bg-transparent text-sm font-bold outline-none cursor-pointer hover:text-emerald-600 transition-colors"
-              >
-                {years.map((y) => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
-            </div>
-
-            <button onClick={() => changeMonth(1)} className="p-1 hover:bg-zinc-100 rounded-lg transition-colors dark:hover:bg-zinc-800">
-              <ChevronRight className="w-5 h-5 text-zinc-500" />
-            </button>
-          </div>
+          <MonthYearPicker
+            selectedMonth={month}
+            selectedYear={year}
+            availableYears={availableYears}
+            onChange={(m, y) => {
+              if (m === 'all' || y === 'all') {
+                // Budgets page must have a specific month
+                return;
+              }
+              setCurrentMonth(`${y}-${m}`);
+            }}
+            onReset={() => {
+              const now = new Date();
+              const m = (now.getMonth() + 1).toString().padStart(2, '0');
+              const y = now.getFullYear().toString();
+              setCurrentMonth(`${y}-${m}`);
+            }}
+          />
         </div>
       </div>
 

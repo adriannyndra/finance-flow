@@ -6,8 +6,7 @@ import { createClient } from '@/utils/supabase/client';
 import { getUserId } from '@/utils/auth/get-user-id';
 import { Loader2, TrendingUp, TrendingDown, Target, CreditCard, BarChart3, LayoutGrid, Wallet, Info, PieChart as PieIcon } from 'lucide-react';
 import { formatIDR } from '@/core/formatters/currency';
-import DashboardChart from '@/components/DashboardChart';
-import { CategoryBreakdownModal } from '@/components/CategoryBreakdownModal';
+import CategoryBreakdownModal from '@/components/CategoryBreakdownModal';
 import { InfoModal } from '@/components/InfoModal';
 import { SupabaseTransactionRepository } from '@/features/transactions/infrastructure/SupabaseTransactionRepository';
 import { SupabaseBillRepository } from '@/features/bills/infrastructure/SupabaseBillRepository';
@@ -23,12 +22,12 @@ import {
   Legend,
   ResponsiveContainer,
   Cell,
-  PieChart,
-  Pie,
   LineChart,
   Line,
   AreaChart,
-  Area
+  Area,
+  PieChart,
+  Pie
 } from 'recharts';
 
 const transactionRepository = new SupabaseTransactionRepository();
@@ -41,9 +40,8 @@ export default function StatisticsPage() {
   const [bills, setBills] = useState<Bill[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [investments, setInvestments] = useState<Investment[]>([]);
-  const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState<'6mo' | '1y' | 'all'>('6mo');
+  const [timeRange, setTimeRange] = useState<'1mo' | '6mo' | '1y' | 'all'>('6mo');
   const [billGrouping, setBillGrouping] = useState<'category' | 'term'>('term');
   const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
   const [infoModal, setInfoModal] = useState<{
@@ -62,7 +60,7 @@ export default function StatisticsPage() {
 
   const fetchData = useCallback(async (uid: string) => {
     try {
-      const [transData, billsData, budgetsData, wishlistData] = await Promise.all([
+      const [transData, billsData, budgetsData] = await Promise.all([
         transactionRepository.getTransactions(uid),
         billRepository.getBills(uid),
         budgetRepository.getBudgets(uid, currentMonthStr),
@@ -89,7 +87,6 @@ export default function StatisticsPage() {
       setBills(billsData || []);
       setBudgets(budgetsData || []);
       setInvestments(mappedInvestments);
-      setWishlist(wishlistData || []);
     } catch (error) {
       console.error('Error fetching stats data:', error);
     } finally {
@@ -116,14 +113,12 @@ export default function StatisticsPage() {
 
   // Section 0: Net Worth Logic
   const netWorthData = useMemo(() => {
-    const monthsToShow = timeRange === '6mo' ? 6 : (timeRange === '1y' ? 12 : 24);
+    const monthsToShow = timeRange === '1mo' ? 1 : (timeRange === '6mo' ? 6 : (timeRange === '1y' ? 12 : 24));
     const data = [];
     const now = new Date();
     
     for (let i = monthsToShow - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      // Timezone-safe monthKey generation
-      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const lastDayOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
       const monthLabel = d.toLocaleString('default', { month: 'short', year: '2-digit' });
 
@@ -158,6 +153,17 @@ export default function StatisticsPage() {
     return data;
   }, [transactions, investments, bills, timeRange]);
 
+  // Snapshot Logic (Current Month)
+  const snapshot = useMemo(() => {
+    const monthTransactions = transactions.filter(t => t.date.startsWith(currentMonthStr));
+    const income = monthTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+    const expense = monthTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+    const savingsRate = income > 0 ? ((income - expense) / income) * 100 : 0;
+    const surplus = income - expense;
+    
+    return { income, expense, savingsRate, surplus };
+  }, [transactions, currentMonthStr]);
+
   // Section 2: Budget vs Actual Logic (Synced with Budgets Page)
   const budgetVsActualData = useMemo(() => {
     const expenseTransactions = transactions.filter(t => t.type === 'expense' && t.date.startsWith(currentMonthStr));
@@ -183,27 +189,6 @@ export default function StatisticsPage() {
 
   // Section 2: Bills Logic (Analytics)
   const billAnalysisData = useMemo(() => {
-    if (billGrouping === 'type') {
-        const totals: Record<string, number> = {
-            'recurring': 0,
-            'installment': 0,
-            'one-time': 0
-        };
-        bills.forEach(b => {
-            totals[b.billType] = (totals[b.billType] || 0) + b.amount;
-        });
-        
-        const labels: Record<string, string> = {
-            'recurring': 'Subscription',
-            'installment': 'Installment',
-            'one-time': 'One-time'
-        };
-
-        return Object.entries(totals)
-            .map(([key, value]) => ({ name: labels[key], value }))
-            .sort((a, b) => b.value - a.value);
-    }
-
     if (billGrouping === 'category') {
       const totals: Record<string, number> = {};
       bills.forEach(b => {
@@ -275,13 +260,12 @@ export default function StatisticsPage() {
 
   // Section 4: Trend Analysis Logic
   const monthlyData = useMemo(() => {
-    const monthsToShow = timeRange === '6mo' ? 6 : (timeRange === '1y' ? 12 : 24);
+    const monthsToShow = timeRange === '1mo' ? 1 : (timeRange === '6mo' ? 6 : (timeRange === '1y' ? 12 : 24));
     const data: Record<string, { month: string; monthKey: string; income: number; expense: number; wishlist: number }> = {};
     const now = new Date();
 
     for (let i = monthsToShow - 1; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        // Timezone-safe monthKey generation
         const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         const monthLabel = d.toLocaleString('default', { month: 'short', year: '2-digit' });
         
@@ -308,7 +292,7 @@ export default function StatisticsPage() {
 
   const savingsRateData = useMemo(() => {
     return monthlyData.map(m => {
-      const realSavings = (m.income - m.expense); // wishlist is already separated out of expense in this monthlyData
+      const realSavings = (m.income - m.expense); 
       const rate = m.income > 0 ? (realSavings / m.income) * 100 : 0;
       return {
         month: m.month,
@@ -349,65 +333,67 @@ export default function StatisticsPage() {
     );
   }
 
-  const totalIncome = transactions
-    .filter(t => t.type === 'income')
-    .reduce((acc, curr) => acc + curr.amount, 0);
-
-  const totalExpenses = transactions
-    .filter(t => t.type === 'expense')
-    .reduce((acc, curr) => acc + curr.amount, 0);
-
-  const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome) * 100 : 0;
-
   return (
     <div className="space-y-12 pb-12">
       {/* SECTION 1: HEADER & KPI OVERVIEW */}
-      <div className="space-y-6">
+      <div className="space-y-8">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Financial Report</h2>
             <p className="text-zinc-500 dark:text-zinc-400">Deep analysis of your assets and spending.</p>
           </div>
-          <div className="flex items-center gap-2 bg-white border border-zinc-200 p-1 rounded-lg dark:bg-zinc-900 dark:border-zinc-800">
-            {(['6mo', '1y'] as const).map((r) => (
+          <div className="flex items-center gap-2 bg-white border border-zinc-200 p-1 rounded-xl dark:bg-zinc-900 dark:border-zinc-800">
+            {(['1mo', '6mo', '1y'] as const).map((r) => (
               <button 
                 key={r}
                 onClick={() => setTimeRange(r)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${timeRange === r ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20' : 'text-zinc-500'}`}
+                className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${timeRange === r ? 'bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900 shadow-md' : 'text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800'}`}
               >
-                {r === '6mo' ? '6 Months' : '1 Year'}
+                {r === '1mo' ? '1 Mo' : r === '6mo' ? '6 Mo' : '1 Yr'}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 relative overflow-hidden group">
+        {/* This Month Snapshot Header */}
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-50/50 rounded-full -mr-20 -mt-20 blur-3xl dark:bg-emerald-900/10 pointer-events-none" />
             <div className="relative z-10">
-              <p className="text-sm font-medium text-zinc-500">Total Income</p>
-              <p className="text-2xl font-bold mt-1 text-emerald-600">{formatIDR(totalIncome)}</p>
-              <div className="mt-2 text-xs text-zinc-400">Cumulative history</div>
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-emerald-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-emerald-600/20">
+                            <LayoutGrid className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">This Month at a Glance</h3>
+                            <p className="text-xs text-zinc-500 font-medium uppercase tracking-wider">{new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}</p>
+                        </div>
+                    </div>
+                    <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 rounded-full text-[10px] font-bold text-zinc-500 dark:bg-zinc-800">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        LIVE TRACKING
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+                    <div>
+                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Income</p>
+                        <p className="text-xl font-black text-emerald-600">{formatIDR(snapshot.income)}</p>
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Expenses</p>
+                        <p className="text-xl font-black text-rose-600">{formatIDR(snapshot.expense)}</p>
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Savings Rate</p>
+                        <p className={`text-xl font-black ${snapshot.savingsRate >= 15 ? 'text-emerald-600' : 'text-amber-500'}`}>{snapshot.savingsRate.toFixed(1)}%</p>
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Monthly Surplus</p>
+                        <p className={`text-xl font-black ${snapshot.surplus >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatIDR(snapshot.surplus)}</p>
+                    </div>
+                </div>
             </div>
-            <TrendingUp className="absolute -right-2 -bottom-2 w-24 h-24 text-emerald-50/50 dark:text-emerald-900/5 group-hover:scale-110 transition-transform" />
-          </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 relative overflow-hidden group">
-            <div className="relative z-10">
-              <p className="text-sm font-medium text-zinc-500">Total Expenses</p>
-              <p className="text-2xl font-bold mt-1 text-rose-600">{formatIDR(totalExpenses)}</p>
-              <div className="mt-2 text-xs text-zinc-400">Cumulative history</div>
-            </div>
-            <TrendingDown className="absolute -right-2 -bottom-2 w-24 h-24 text-rose-50/50 dark:text-rose-900/5 group-hover:scale-110 transition-transform" />
-          </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 relative overflow-hidden group">
-            <div className="relative z-10">
-              <p className="text-sm font-medium text-zinc-500">Savings Rate</p>
-              <p className={`text-2xl font-bold mt-1 ${savingsRate >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {savingsRate.toFixed(1)}%
-              </p>
-              <div className="mt-2 text-xs text-zinc-400">Financial efficiency</div>
-            </div>
-            <Target className="absolute -right-2 -bottom-2 w-24 h-24 text-amber-50/50 dark:text-amber-900/5 group-hover:scale-110 transition-transform" />
-          </div>
         </div>
       </div>
 
@@ -462,14 +448,9 @@ export default function StatisticsPage() {
                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa', fontWeight: 600 }} dy={10} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa', fontWeight: 600 }} tickFormatter={(v) => `${(v/1000000).toFixed(1)}M`} />
                 <Tooltip 
-                  formatter={(value: number, name: string, entry: any) => {
-                    const color = (entry.color === '#e2e8f0' || entry.fill === '#e2e8f0') ? '#18181b' : (entry.color || entry.fill || '#18181b');
-                    return (
-                      <span key="val" style={{ color }}>{name}: {formatIDR(value)}</span>
-                    );
-                  }}
+                  formatter={(value: number, name: string) => [formatIDR(value), name]}
                   contentStyle={{ backgroundColor: '#fff', borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: 'bold' }}
-                  labelStyle={{ color: '#18181b' }}
+                  itemStyle={{ padding: '2px 0' }}
                 />
                 <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '10px', paddingBottom: '20px', textTransform: 'uppercase' }} />
                 <Area type="monotone" dataKey="Cash" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.6} />
@@ -528,14 +509,8 @@ export default function StatisticsPage() {
                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa', fontWeight: 600 }} dy={10} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa', fontWeight: 600 }} tickFormatter={(v) => `${(v/1000000).toFixed(1)}M`} />
                 <Tooltip 
-                  formatter={(value: number, name: string, entry: any) => {
-                    const color = (entry.color === '#e2e8f0' || entry.fill === '#e2e8f0') ? '#18181b' : (entry.color || entry.fill || '#18181b');
-                    return (
-                      <span key="val" style={{ color }}>{name}: {formatIDR(value)}</span>
-                    );
-                  }}
+                  formatter={(value: number, name: string) => [formatIDR(value), name]}
                   contentStyle={{ backgroundColor: '#fff', borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: 'bold' }}
-                  labelStyle={{ color: '#18181b' }}
                 />
                 <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '10px', paddingBottom: '20px', textTransform: 'uppercase' }} />
                 <Line type="monotone" dataKey="income" name="Income" stroke="#10b981" strokeWidth={4} dot={{ r: 4, fill: '#10b981' }} activeDot={{ r: 6 }} />
@@ -596,14 +571,8 @@ export default function StatisticsPage() {
                   tickLine={false}
                 />
                 <Tooltip 
-                  formatter={(value: number, name: string, entry: any) => {
-                    const color = (entry.color === '#e2e8f0' || entry.fill === '#e2e8f0') ? '#18181b' : (entry.color || entry.fill || '#18181b');
-                    return (
-                      <span key="val" style={{ color }}>{name}: {formatIDR(value)}</span>
-                    );
-                  }}
+                  formatter={(value: number, name: string) => [formatIDR(value), name]}
                   contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e4e4e7', fontSize: '12px', fontWeight: 'bold' }}
-                  labelStyle={{ color: '#18181b' }}
                 />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
                 <Bar dataKey="Budget" fill="#e2e8f0" radius={[0, 4, 4, 0]} barSize={12} />
@@ -613,7 +582,7 @@ export default function StatisticsPage() {
           </div>
         </div>
 
-        {/* Bills Treemap/Bar Analysis */}
+        {/* Bills Analysis */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 flex flex-col h-[450px]">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
@@ -623,19 +592,13 @@ export default function StatisticsPage() {
             <div className="flex items-center bg-zinc-100 p-1 rounded-lg dark:bg-zinc-800">
               <button 
                 onClick={() => setBillGrouping('term')}
-                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${billGrouping === 'term' ? 'bg-white shadow-sm text-amber-600 dark:bg-zinc-700' : 'text-zinc-500'}`}
+                className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${billGrouping === 'term' ? 'bg-white shadow-sm text-amber-600 dark:bg-zinc-700' : 'text-zinc-500'}`}
               >
                 Key Terms
               </button>
               <button 
-                onClick={() => setBillGrouping('type')}
-                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${billGrouping === 'type' ? 'bg-white shadow-sm text-amber-600 dark:bg-zinc-700' : 'text-zinc-500'}`}
-              >
-                Type
-              </button>
-              <button 
                 onClick={() => setBillGrouping('category')}
-                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${billGrouping === 'category' ? 'bg-white shadow-sm text-amber-600 dark:bg-zinc-700' : 'text-zinc-500'}`}
+                className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${billGrouping === 'category' ? 'bg-white shadow-sm text-amber-600 dark:bg-zinc-700' : 'text-zinc-500'}`}
               >
                 Category
               </button>
@@ -655,14 +618,8 @@ export default function StatisticsPage() {
                   tickLine={false}
                 />
                 <Tooltip 
-                  formatter={(value: number, name: string, entry: any) => {
-                    const color = (entry.color === '#e2e8f0' || entry.fill === '#e2e8f0') ? '#18181b' : (entry.color || entry.fill || '#18181b');
-                    return (
-                      <span key="val" style={{ color }}>{name}: {formatIDR(value)}</span>
-                    );
-                  }}
+                  formatter={(value: number, name: string) => [formatIDR(value), name]}
                   contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e4e4e7', fontSize: '12px', fontWeight: 'bold' }}
-                  labelStyle={{ color: '#18181b' }}
                 />
                 <Bar dataKey="value" fill="#f59e0b" radius={[0, 4, 4, 0]}>
                   {billAnalysisData.map((_, index) => (
@@ -675,246 +632,11 @@ export default function StatisticsPage() {
         </div>
       </div>
 
-      {/* SECTION 2.5: SAVINGS CONSISTENCY */}
-      <div className="bg-white p-8 rounded-3xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-emerald-600" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Savings Rate</h3>
-              <p className="text-xs text-zinc-500">Percentage of income saved or invested monthly</p>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Last Month Surplus</p>
-            <p className="text-2xl font-black text-emerald-600">{formatIDR(savingsRateData[savingsRateData.length - 1]?.surplus || 0)}</p>
-          </div>
-        </div>
-
-        <div className="h-[250px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={savingsRateData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
-              <XAxis 
-                dataKey="month" 
-                axisLine={false} 
-                tickLine={false} 
-                tick={{ fontSize: 10, fill: '#a1a1aa', fontWeight: 600 }}
-              />
-              <YAxis 
-                axisLine={false} 
-                tickLine={false} 
-                tick={{ fontSize: 10, fill: '#a1a1aa', fontWeight: 600 }}
-                tickFormatter={(v) => `${v}%`}
-                domain={[0, 100]}
-              />
-              <Tooltip 
-                formatter={(value: number, name: string, entry: any) => {
-                  const color = entry.fill;
-                  return (
-                    <span key="val" style={{ color }}>Savings Rate: {value}%</span>
-                  );
-                }}
-                contentStyle={{ 
-                  backgroundColor: '#fff',
-                  borderRadius: '16px', 
-                  border: 'none', 
-                  boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
-                  fontSize: '12px',
-                  fontWeight: 'bold'
-                }}
-                labelStyle={{ color: '#18181b' }}
-              />
-              <Bar dataKey="rate" radius={[6, 6, 0, 0]} barSize={40}>
-                {savingsRateData.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={entry.rate >= 20 ? '#10b981' : entry.rate >= 10 ? '#3b82f6' : '#f59e0b'} 
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="mt-6 flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-emerald-500" />
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-tighter">Excellent (&gt;20%)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-blue-500" />
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-tighter">Good (10-20%)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-amber-500" />
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-tighter">Needs Attention (&lt;10%)</span>
-          </div>
-        </div>
-      </div>
-
-      {/* SECTION 3: INVESTMENT PORTFOLIO */}
-      <div className="space-y-6">
-        <div className="flex items-center gap-2">
-          <BarChart3 className="w-6 h-6 text-zinc-900 dark:text-zinc-50" />
-          <h3 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Investment Portfolio</h3>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Asset Allocation */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 h-[350px] flex flex-col">
-            <h4 className="text-[10px] font-bold text-zinc-400 mb-6 uppercase tracking-wider">Asset Allocation</h4>
-            <div className="flex-1 min-h-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={investmentAllocation}
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {investmentAllocation.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6'][index % 4]} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    formatter={(value: number, name: string, entry: any) => [
-                      <span key="val" style={{ color: (entry.color === '#e2e8f0' || entry.fill === '#e2e8f0') ? '#18181b' : (entry.color || entry.fill || '#18181b') }}>{formatIDR(value)}</span>,
-                      <span key="name" style={{ color: '#18181b' }}>{name}</span>
-                    ]}
-                    contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: 'bold' }}
-                    labelStyle={{ color: '#18181b' }}
-                  />
-
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2 justify-center">
-               {investmentAllocation.map((entry, index) => (
-                 <div key={entry.name} className="flex items-center gap-1">
-                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6'][index % 4] }} />
-                   <span className="text-[8px] font-bold text-zinc-500 uppercase">{entry.name}</span>
-                 </div>
-               ))}
-            </div>
-          </div>
-
-          {/* Growth Bridge */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 h-[350px] flex flex-col">
-            <h4 className="text-[10px] font-bold text-zinc-400 mb-6 uppercase tracking-wider">Growth Bridge</h4>
-            <div className="flex-1 min-h-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={[
-                    { name: 'Portfolio', Principal: growthBridgeData.find(d => d.name === 'Principal')?.value || 0, Profit: growthBridgeData.find(d => d.name === 'Growth')?.value || 0, Loss: growthBridgeData.find(d => d.name === 'Loss')?.value || 0 }
-                ]} margin={{ left: -30 }}>
-                  <XAxis dataKey="name" hide />
-                  <YAxis hide />
-                  <Tooltip 
-                    formatter={(value: number, name: string, entry: any) => [
-                      <span key="val" style={{ color: (entry.color === '#e2e8f0' || entry.fill === '#e2e8f0') ? '#18181b' : (entry.color || entry.fill || '#18181b') }}>{formatIDR(value)}</span>,
-                      <span key="name" style={{ color: '#18181b' }}>{name}</span>
-                    ]}
-                    contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: 'bold' }}
-                    labelStyle={{ color: '#18181b' }}
-                  />
-
-                  <Bar dataKey="Principal" stackId="a" fill="#94a3b8" radius={[0, 0, 0, 0]} barSize={60} />
-                  <Bar dataKey="Profit" stackId="a" fill="#10b981" radius={[6, 6, 0, 0]} barSize={60} />
-                  <Bar dataKey="Loss" stackId="a" fill="#ef4444" radius={[6, 6, 0, 0]} barSize={60} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-4 space-y-2">
-               <div className="flex justify-between text-[10px] font-bold">
-                 <span className="text-zinc-400 uppercase">Capital</span>
-                 <span className="text-zinc-500">{formatIDR(growthBridgeData.find(d => d.name === 'Principal')?.value || 0)}</span>
-               </div>
-               <div className="flex justify-between text-[10px] font-bold">
-                 <span className="text-zinc-400 uppercase">Net Result</span>
-                 <span className={ (growthBridgeData.find(d => d.name === 'Growth')?.value || 0) > 0 ? 'text-emerald-600' : 'text-rose-600'}>
-                    { (growthBridgeData.find(d => d.name === 'Growth')?.value || 0) > 0 ? '+' : '-' }
-                    { formatIDR(Math.abs((growthBridgeData.find(d => d.name === 'Growth')?.value || 0) - (growthBridgeData.find(d => d.name === 'Loss')?.value || 0))) }
-                 </span>
-               </div>
-            </div>
-          </div>
-
-          {/* Risk Map */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 h-[350px] flex flex-col">
-            <h4 className="text-[10px] font-bold text-zinc-400 mb-6 uppercase tracking-wider">Risk Profile</h4>
-            <div className="flex-1 min-h-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={riskMapData}
-                    innerRadius={0}
-                    outerRadius={80}
-                    dataKey="value"
-                  >
-                    {riskMapData.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={entry.name.includes('Speculative') ? '#ef4444' : entry.name.includes('Moderate') ? '#3b82f6' : '#10b981'} 
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    formatter={(value: number, name: string, entry: any) => [
-                      <span key="val" style={{ color: (entry.color === '#e2e8f0' || entry.fill === '#e2e8f0') ? '#18181b' : (entry.color || entry.fill || '#18181b') }}>{formatIDR(value)}</span>,
-                      <span key="name" style={{ color: '#18181b' }}>{name}</span>
-                    ]}
-                    contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: 'bold' }}
-                    labelStyle={{ color: '#18181b' }}
-                  />
-
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2 justify-center">
-               {riskMapData.map((entry) => (
-                 <div key={entry.name} className="flex items-center gap-1">
-                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.name.includes('Speculative') ? '#ef4444' : entry.name.includes('Moderate') ? '#3b82f6' : '#10b981' }} />
-                   <span className="text-[8px] font-bold text-zinc-500 uppercase">{entry.name.split(' ')[0]}</span>
-                 </div>
-               ))}
-            </div>
-          </div>
-
-          {/* Performance Bar */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 h-[350px] flex flex-col">
-            <h4 className="text-[10px] font-bold text-zinc-400 mb-6 uppercase tracking-wider">Asset Performance</h4>
-            <div className="flex-1 min-h-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={investmentPerformance} layout="vertical">
-                  <XAxis type="number" hide />
-                  <YAxis dataKey="name" type="category" hide />
-                  <Tooltip 
-                    formatter={(value: number, name: string, entry: any) => [
-                      <span key="val" style={{ color: (entry.color === '#e2e8f0' || entry.fill === '#e2e8f0') ? '#18181b' : (entry.color || entry.fill || '#18181b') }}>{formatIDR(value)}</span>,
-                      <span key="name" style={{ color: '#18181b' }}>{name}</span>
-                    ]}
-                    contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: 'bold' }}
-                    labelStyle={{ color: '#18181b' }}
-                  />
-
-                  <Bar dataKey="profit" radius={[0, 4, 4, 0]}>
-                    {investmentPerformance.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.profit >= 0 ? '#10b981' : '#ef4444'} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <CategoryBreakdownModal
         isOpen={isBreakdownOpen}
         onClose={() => setIsBreakdownOpen(false)}
         transactions={transactions}
-        title={`All spending categories for the selected period`}
+        title={`Spending distribution for ${new Date().toLocaleString('en-US', { month: 'long' })}`}
       />
 
       <InfoModal 

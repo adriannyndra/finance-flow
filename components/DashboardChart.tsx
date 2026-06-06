@@ -15,6 +15,7 @@ import { formatIDR } from '@/core/formatters/currency';
 interface DashboardChartProps {
   transactions: Transaction[];
   title?: string;
+  onCategoryClick?: (category: string) => void;
 }
 
 const COLORS = [
@@ -31,7 +32,7 @@ const COLORS = [
   '#a855f7', // Purple
 ];
 
-export default function DashboardChart({ transactions, title }: DashboardChartProps) {
+export default function DashboardChart({ transactions, title, onCategoryClick }: DashboardChartProps) {
   const chartData = useMemo(() => {
     const expenseTransactions = transactions.filter(t => t.type === 'expense');
     const categoryTotals: Record<string, number> = {};
@@ -67,6 +68,8 @@ export default function DashboardChart({ transactions, title }: DashboardChartPr
               outerRadius={90}
               paddingAngle={5}
               dataKey="value"
+              onClick={(data: any) => data && onCategoryClick?.(data.name)}
+              className="cursor-pointer outline-none"
             >
               {chartData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="transparent" />
@@ -90,10 +93,19 @@ export default function DashboardChart({ transactions, title }: DashboardChartPr
               verticalAlign="bottom" 
               height={36}
               iconType="circle"
-              formatter={(value) => <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-tighter">{value}</span>}
+              onClick={(data: any) => data && onCategoryClick?.(data.value)}
+              formatter={(value) => <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-tighter hover:text-emerald-600 transition-colors cursor-pointer">{value}</span>}
             />
           </PieChart>
         </ResponsiveContainer>
+      </div>
+      <div className="mt-4 text-center">
+        <button 
+          onClick={() => onCategoryClick?.('all')}
+          className="text-xs font-bold text-emerald-600 hover:text-emerald-500 transition-colors"
+        >
+          View Full Breakdown &rarr;
+        </button>
       </div>
     </div>
   );
