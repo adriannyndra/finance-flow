@@ -179,23 +179,47 @@ export default function BillsPage() {
   };
 
   const solveForEndDate = () => {
-    const amountStr = parseNumberInput(formData.amountDisplay);
-    const totalStr = parseNumberInput(formData.totalAmountDisplay);
-    const amountNum = amountStr ? parseFloat(amountStr) : 0;
-    const totalNum = totalStr ? parseFloat(totalStr) : 0;
-    if (amountNum > 0 && totalNum > 0) {
-        const solvedMonths = Math.ceil(totalNum / amountNum);
+    let solvedMonths = 0;
+    
+    if (formData.billType === 'installment') {
+        solvedMonths = formData.tenure;
+    } else {
+        const amountStr = parseNumberInput(formData.amountDisplay);
+        const totalStr = parseNumberInput(formData.totalAmountDisplay);
+        const amountNum = amountStr ? parseFloat(amountStr) : 0;
+        const totalNum = totalStr ? parseFloat(totalStr) : 0;
+        if (amountNum > 0 && totalNum > 0) {
+            solvedMonths = Math.ceil(totalNum / amountNum);
+        }
+    }
+
+    if (solvedMonths > 0) {
         const now = new Date();
-        const solvedEnd = new Date(now.getFullYear(), now.getMonth() + solvedMonths, formData.billing_day);
+        // If billing day for this month has already passed, we start counting from next month
+        const monthOffset = now.getDate() > formData.billing_day ? solvedMonths : solvedMonths - 1;
+        const solvedEnd = new Date(now.getFullYear(), now.getMonth() + monthOffset, formData.billing_day);
         setFormData(prev => ({ ...prev, endDate: solvedEnd.toISOString().split('T')[0] }));
     }
+  };
+
+  const solveForTenure = () => {
+      const months = getMonthsUntilEnd();
+      if (months > 0) {
+          setFormData(prev => ({ ...prev, tenure: months }));
+      }
   };
 
   const getMonthsUntilEnd = () => {
       if (!formData.endDate) return 0;
       const end = new Date(formData.endDate);
       const now = new Date();
-      const diff = (end.getFullYear() - now.getFullYear()) * 12 + (end.getMonth() - now.getMonth());
+      let diff = (end.getFullYear() - now.getFullYear()) * 12 + (end.getMonth() - now.getMonth());
+      
+      // If billing day for this month hasn't passed, the current month counts as a remaining installment
+      if (now.getDate() <= formData.billing_day) {
+          diff += 1;
+      }
+      
       return diff > 0 ? diff : 0;
   };
 
@@ -500,11 +524,11 @@ export default function BillsPage() {
       const items = billItems[bill.id] || [];
       const linkedIds = new Set(items.map(i => i.transactionId));
 
-      // Find transactions that match category or description and are not yet linked
+      // Find transactions that match description EXACTLY and are not yet linked
       const matches = transactions.filter(t => 
         t.type === 'expense' && 
         !linkedIds.has(t.id) &&
-        (t.category === bill.category || t.description.toLowerCase().includes(bill.name.toLowerCase()))
+        t.description === bill.name
       );
 
       if (matches.length === 0) {
@@ -661,15 +685,20 @@ export default function BillsPage() {
               {formData.billType === 'installment' ? (
                 <div>
                   <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Tenure (Months)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    readOnly={!!editingId}
-                    value={formData.tenure}
-                    onChange={(e) => setFormData({ ...formData, tenure: parseInt(e.target.value) })}
-                    className={`mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 ${editingId ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      readOnly={!!editingId}
+                      value={formData.tenure}
+                      onChange={(e) => setFormData({ ...formData, tenure: parseInt(e.target.value) })}
+                      className={`mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700 ${editingId ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    />
+                    {!editingId && (
+                        <button type="button" onClick={solveForTenure} className="mt-1 p-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500" title="Calculate Tenure (from End Date)"><RefreshCw className="w-4 h-4" /></button>
+                    )}
+                  </div>
                   {editingId && <p className="text-[10px] text-zinc-500 mt-1">Tenure cannot be changed once created.</p>}
                 </div>
               ) : (
@@ -723,8 +752,8 @@ export default function BillsPage() {
                     value={formData.endDate}
                     onChange={(val) => setFormData({ ...formData, endDate: val })}
                 />
-                {formData.billType === 'recurring' && (
-                  <button type="button" onClick={solveForEndDate} className="mt-2 w-full py-2 flex items-center justify-center gap-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500 text-xs font-bold" title="Calculate End Date (Total / Amount)">
+                {(formData.billType === 'recurring' || formData.billType === 'installment') && (
+                  <button type="button" onClick={solveForEndDate} className="mt-2 w-full py-2 flex items-center justify-center gap-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500 text-xs font-bold" title="Calculate End Date (from Amount/Tenure)">
                     <RefreshCw className="w-4 h-4" /> Calculate End Date
                   </button>
                 )}

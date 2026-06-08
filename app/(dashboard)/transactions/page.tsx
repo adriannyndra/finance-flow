@@ -33,6 +33,7 @@ import { ConfirmationModal } from '@/components/ConfirmationModal';
 
 import { MonthYearPicker } from '@/components/design/MonthYearPicker';
 import { DatePicker } from '@/components/design/DatePicker';
+import { Dropdown } from '@/components/design/Dropdown';
 
 const repository = new SupabaseTransactionRepository();
 const getUserTransactions = new GetUserTransactions(repository);
@@ -425,24 +426,21 @@ export default function TransactionsPage() {
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Type</label>
-                <select
-                  value={formData.type}
-                  onChange={(e) => {
-                    const newType = e.target.value as TransactionType;
-                    setFormData({ 
-                      ...formData, 
-                      type: newType,
-                      category: newType === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]
-                    });
-                  }}
-                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
-                >
-                  <option value="expense">Expense</option>
-                  <option value="income">Income</option>
-                </select>
-              </div>
+              <Dropdown
+                label="Type"
+                value={formData.type}
+                options={[
+                  { label: 'Expense', value: 'expense' },
+                  { label: 'Income', value: 'income' }
+                ]}
+                onChange={(newType) => {
+                  setFormData({ 
+                    ...formData, 
+                    type: newType,
+                    category: newType === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]
+                  });
+                }}
+              />
               <div>
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Amount (Rp)</label>
                 <input
@@ -473,18 +471,12 @@ export default function TransactionsPage() {
                   </div>
                 )}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Category</label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-700"
-                >
-                  {(formData.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
+              <Dropdown
+                label="Category"
+                value={formData.category}
+                options={(formData.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(cat => ({ label: cat, value: cat }))}
+                onChange={(val) => setFormData({ ...formData, category: val })}
+              />
               <div>
                 <DatePicker
                   label="Date"
@@ -508,14 +500,12 @@ export default function TransactionsPage() {
             <span className="text-sm font-bold text-zinc-700 dark:text-zinc-300">Filters:</span>
           </div>
           
-          <select
+          <Dropdown
             value={filterCategory}
-            onChange={(e) => { setFilterCategory(e.target.value); setCurrentPage(1); }}
-            className="bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-sm font-bold dark:bg-zinc-800 dark:border-zinc-700 outline-none hover:bg-zinc-100 transition-colors cursor-pointer"
-          >
-            <option value="all">All Categories</option>
-            {ALL_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-          </select>
+            options={[{ label: 'All Categories', value: 'all' }, ...ALL_CATEGORIES.map(cat => ({ label: cat, value: cat }))]}
+            onChange={(val) => { setFilterCategory(val); setCurrentPage(1); }}
+            className="w-48"
+          />
 
           <MonthYearPicker
             selectedMonth={filterMonth}
@@ -543,16 +533,13 @@ export default function TransactionsPage() {
 
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Rows:</span>
-          <select
+          <Dropdown
             value={pageSize}
-            onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-            className="bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-1.5 text-xs font-bold dark:bg-zinc-800 dark:border-zinc-700 outline-none hover:bg-zinc-100 transition-colors cursor-pointer"
-          >
-            <option value={10}>10</option>
-            <option value={20}>20</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
-          </select>
+            options={[10, 20, 50, 100].map(size => ({ label: size.toString(), value: size }))}
+            onChange={(val) => { setPageSize(Number(val)); setCurrentPage(1); }}
+            className="w-20"
+            direction="up"
+          />
         </div>
       </div>
 
@@ -594,15 +581,11 @@ export default function TransactionsPage() {
                         />
                       </td>
                       <td className="px-6 py-4">
-                        <select
+                        <Dropdown
                           value={editFormData.category}
-                          onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
-                          className="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm dark:bg-zinc-800 dark:border-zinc-700"
-                        >
-                          {(editFormData.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(cat => (
-                            <option key={cat} value={cat}>{cat}</option>
-                          ))}
-                        </select>
+                          options={(editFormData.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(cat => ({ label: cat, value: cat }))}
+                          onChange={(val) => setEditFormData({ ...editFormData, category: val })}
+                        />
                       </td>
                       <td className="px-6 py-4 text-right">
                         <input
@@ -665,15 +648,13 @@ export default function TransactionsPage() {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold text-zinc-400 uppercase">Go to:</span>
-                <select
+                <Dropdown
                   value={currentPage}
-                  onChange={(e) => setCurrentPage(Number(e.target.value))}
-                  className="bg-white border border-zinc-200 rounded-lg px-2 py-1 text-xs font-medium dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 outline-none"
-                >
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                    <option key={p} value={p}>Page {p}</option>
-                  ))}
-                </select>
+                  options={Array.from({ length: totalPages }, (_, i) => i + 1).map(p => ({ label: `Page ${p}`, value: p }))}
+                  onChange={(val) => setCurrentPage(Number(val))}
+                  className="w-28"
+                  direction="up"
+                />
               </div>
 
               <div className="flex items-center gap-2">

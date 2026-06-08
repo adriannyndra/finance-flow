@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   PieChart, 
@@ -9,7 +10,9 @@ import {
   Receipt, 
   ArrowLeftRight, 
   TrendingUp, 
-  Settings 
+  Settings,
+  ChevronLeft,
+  Menu
 } from 'lucide-react';
 
 export default function DashboardLayout({
@@ -18,6 +21,21 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Load sidebar state from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('sidebar-collapsed');
+    if (saved !== null) {
+      setIsCollapsed(saved === 'true');
+    }
+  }, []);
+
+  const toggleSidebar = () => {
+    const newState = !isCollapsed;
+    setIsCollapsed(newState);
+    localStorage.setItem('sidebar-collapsed', newState.toString());
+  };
 
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -32,11 +50,23 @@ export default function DashboardLayout({
   return (
     <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950">
       {/* Sidebar for Desktop */}
-      <aside className="hidden md:flex w-64 flex-col bg-white border-r border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800">
-        <div className="flex h-16 items-center px-6 border-b border-zinc-100 dark:border-zinc-800">
-          <span className="text-xl font-bold text-zinc-900 dark:text-zinc-50 tracking-tight">
-            Finance<span className="text-emerald-600">Flow</span>
-          </span>
+      <aside 
+        className={`hidden md:flex flex-col bg-white border-r border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 transition-all duration-300 ease-in-out ${
+          isCollapsed ? 'w-20' : 'w-64'
+        }`}
+      >
+        <div className={`flex h-16 items-center border-b border-zinc-100 dark:border-zinc-800 px-6 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+          {!isCollapsed && (
+            <span className="text-xl font-bold text-zinc-900 dark:text-zinc-50 tracking-tight transition-opacity duration-300">
+              Finance<span className="text-emerald-600">Flow</span>
+            </span>
+          )}
+          <button 
+            onClick={toggleSidebar}
+            className="p-1.5 rounded-lg bg-zinc-50 hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-400 hover:text-zinc-600 transition-colors"
+          >
+            {isCollapsed ? <Menu className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+          </button>
         </div>
         <nav className="flex-1 space-y-1 px-3 py-4">
           {navItems.map((item) => {
@@ -46,16 +76,21 @@ export default function DashboardLayout({
               <Link
                 key={item.name}
                 href={item.href}
-                className={`flex items-center px-4 py-2.5 text-sm font-semibold rounded-xl transition-all duration-200 group ${
+                title={isCollapsed ? item.name : ''}
+                className={`flex items-center px-4 py-2.5 text-sm font-semibold rounded-xl transition-all duration-200 group relative ${
                   isActive
                     ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
                     : 'text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-50'
-                }`}
+                } ${isCollapsed ? 'justify-center px-2' : ''}`}
               >
-                <Icon className={`mr-3 w-5 h-5 transition-colors ${
+                <Icon className={`w-5 h-5 transition-colors ${
                   isActive ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-900 dark:group-hover:text-zinc-50'
-                }`} />
-                {item.name}
+                } ${!isCollapsed ? 'mr-3' : ''}`} />
+                {!isCollapsed && (
+                  <span className="whitespace-nowrap opacity-100 transition-opacity duration-300">
+                    {item.name}
+                  </span>
+                )}
               </Link>
             );
           })}
