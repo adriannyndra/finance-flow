@@ -20,8 +20,10 @@
   - Migrate Spending, Assets, and Budgets cards into the new Tabbed Hub (using existing card logic).
 
 ## 🐞 Urgent Fixes & Refinements
-- [ ] **Projector Double-Count**: Fix bug where one-time bills show up twice in the same month in the Obligation Projector.
-- [ ] **Financial Month Shift**: Implement logic to treat bills due on Day 1 (or Day 1-3) as obligations of the *previous* month to align with real-world cash flow.
+- [x] **Projector Double-Count**: Fix bug where one-time bills show up twice in the same month in the Obligation Projector.
+- [x] **Financial Month Shift**: Implement logic to treat bills due on Day 1 (or Day 1-3) as obligations of the *previous* month to align with real-world cash flow.
+- [ ] **Distribution Layout**: Fix bug where the Distribution card doesn't have the correct height compared to the heatmap.
+- [ ] **Velocity UI**: Fix bug where the Daily Velocity number does not center correctly inside the card.
 - [x] **Data Integrity (Ghost Items)**: Overhauled Stats logic to prioritize `billItems` over headers. Manually deleted items now correctly sync.
 - [x] **Projector Logic**: Fixed timezone bug (August/July shift) and added strict `endDate` checking.
 - [x] **Projector UX**: Updated modal to show "Due [Month] [Day]" for clarity.
@@ -29,7 +31,7 @@
 - [x] **Bill Reconciliation (Strict Sync)**: Updated `handleReconcile` to exact, case-sensitive string matching.
 
 ## 🏗️ Intelligence Hub Expansion (6-Card Architecture)
-- [ ] **Spending IQ Refinement**:
+- [x] **Spending IQ Refinement**:
   - Add **Top Merchants** card.
   - Add **Daily Velocity** card (Avg spend/day).
   - Add **Lifestyle Ratio** (Needs vs. Wants).

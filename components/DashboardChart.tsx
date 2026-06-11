@@ -55,18 +55,22 @@ export default function DashboardChart({ transactions, title, onCategoryClick }:
   }
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full h-full flex flex-col relative">
       {title && <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6 text-center">{title}</h3>}
-      <div className="flex-1 w-full min-h-[300px]">
+      <div className="flex-1 w-full min-h-[300px] relative">
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+            <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Total Spend</p>
+            <p className="text-xl font-black text-zinc-900 dark:text-zinc-50">{formatIDR(chartData.reduce((acc, curr) => acc + curr.value, 0))}</p>
+        </div>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={chartData}
               cx="50%"
               cy="50%"
-              innerRadius={70}
-              outerRadius={90}
-              paddingAngle={5}
+              innerRadius={80}
+              outerRadius={105}
+              paddingAngle={2}
               dataKey="value"
               onClick={(data: any) => data && onCategoryClick?.(data.name)}
               className="cursor-pointer outline-none"
@@ -91,23 +95,16 @@ export default function DashboardChart({ transactions, title, onCategoryClick }:
               }}
               itemStyle={{ padding: '2px 0' }}
             />
-            <Legend 
-              verticalAlign="bottom" 
-              height={36}
-              iconType="circle"
-              onClick={(data: any) => data && onCategoryClick?.(data.value)}
-              formatter={(value) => <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-tighter hover:text-emerald-600 transition-colors cursor-pointer">{value}</span>}
-            />
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <div className="mt-4 text-center">
-        <button 
-          onClick={() => onCategoryClick?.('all')}
-          className="text-xs font-bold text-emerald-600 hover:text-emerald-500 transition-colors"
-        >
-          View Full Breakdown &rarr;
-        </button>
+      <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2">
+        {chartData.slice(0, 5).map((entry, index) => (
+            <div key={index} className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => onCategoryClick?.(entry.name)}>
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                <span className="text-[9px] font-black text-zinc-500 uppercase tracking-tighter">{entry.name}</span>
+            </div>
+        ))}
       </div>
     </div>
   );
