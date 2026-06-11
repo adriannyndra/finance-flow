@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Transaction, Investment, Bill, Budget, WishlistItem } from '@/core/entities';
 import { createClient } from '@/utils/supabase/client';
 import { getUserId } from '@/utils/auth/get-user-id';
-import { Loader2, TrendingUp, TrendingDown, Target, CreditCard, BarChart3, LayoutGrid, Wallet, Info, PieChart as PieIcon } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, Target, CreditCard, BarChart3, LayoutGrid, Wallet, Info, PieChart as PieIcon, Check } from 'lucide-react';
 import { formatIDR } from '@/core/formatters/currency';
 import DashboardChart from '@/components/DashboardChart';
 import CategoryBreakdownModal from '@/components/CategoryBreakdownModal';
@@ -395,62 +395,106 @@ export default function StatisticsPage() {
     const futureMonths = 12;
     const projectorData = [];
     
+    // Financial Month Shift Config (Day 4 of Month M to Day 3 of Month M+1)
+    const shiftStartDay = 4;
+    const shiftEndDay = 3;
+
     // 1. Future Obligation Projector
     for (let i = 0; i < futureMonths; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      const targetMonthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const monthLabel = d.toLocaleString('default', { month: 'short', year: '2-digit' });
-      const monthLong = d.toLocaleString('default', { month: 'long' });
       
+      const rangeStart = new Date(d.getFullYear(), d.getMonth(), shiftStartDay);
+      const rangeEnd = new Date(d.getFullYear(), d.getMonth() + 1, shiftEndDay, 23, 59, 59);
+
       let monthlyTotal = 0;
       const billsForMonth: any[] = [];
 
-      // A. Add recurring bills that are active
-      bills.filter(b => b.active && b.billType === 'recurring').forEach(bill => {
-        // If it's recurring, it's expected every month unless there's an end date
-        if (!bill.endDate || bill.endDate.slice(0, 7) >= targetMonthKey) {
-          monthlyTotal += bill.amount;
+      // A. Check existing Bill Items in this range
+      const rangeItems = billItems.filter(item => {
+        const due = new Date(item.dueDate);
+        return due >= rangeStart && due <= rangeEnd;
+      });
+
+      // Add PENDING items to the projector
+      rangeItems.filter(item => item.status === 'pending').forEach(item => {
+        const bill = bills.find(b => b.id === item.billId);
+        if (bill) {
+          monthlyTotal += item.amount;
+          const dueD = new Date(item.dueDate);
           billsForMonth.push({
             ...bill,
-            detail: `Every ${bill.billing_day}${bill.billing_day === 1 ? 'st' : bill.billing_day === 2 ? 'nd' : bill.billing_day === 3 ? 'rd' : 'th'}`
+            amount: item.amount,
+            billType: bill.billType,
+            detail: `Due ${dueD.toLocaleDateString('default', { month: 'short', day: 'numeric' })}`
           });
         }
       });
 
-      // B. Add pending installment items for this specific month
-      billItems
-        .filter(item => item.status === 'pending' && item.dueDate.startsWith(targetMonthKey))
-        .forEach(item => {
-          const bill = bills.find(b => b.id === item.billId);
-          if (bill) {
-            monthlyTotal += item.amount;
-            const dueD = new Date(item.dueDate);
+      // B. Add Active Bills that DON'T have a Bill Item in this range yet
+      bills.filter(b => b.active).forEach(bill => {
+        const hasItemInRange = rangeItems.some(item => item.billId === bill.id);
+        if (hasItemInRange) return;
+
+        let fallsInRange = false;
+        let predictedDueDate = "";
+
+        if (bill.billType === 'recurring') {
+          if (bill.billing_day >= shiftStartDay) {
+            fallsInRange = true;
+            predictedDueDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(bill.billing_day).padStart(2, '0')}`;
+          } else if (bill.billing_day <= shiftEndDay) {
+            fallsInRange = true;
+            const nextM = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+            predictedDueDate = `${nextM.getFullYear()}-${String(nextM.getMonth() + 1).padStart(2, '0')}-${String(bill.billing_day).padStart(2, '0')}`;
+          }
+        } else if (bill.endDate) {
+          const end = new Date(bill.endDate);
+          if (end >= rangeStart && end <= rangeEnd) {
+            fallsInRange = true;
+            predictedDueDate = bill.endDate;
+          }
+        }
+
+        if (fallsInRange) {
+          if (!bill.endDate || bill.endDate >= predictedDueDate) {
+            monthlyTotal += bill.amount;
+            const dueD = new Date(predictedDueDate);
             billsForMonth.push({
               ...bill,
-              amount: item.amount,
-              detail: `Due ${monthLong} ${dueD.getDate()}`
+              billType: bill.billType,
+              detail: `Est. ${dueD.toLocaleDateString('default', { month: 'short', day: 'numeric' })}`
             });
           }
-        });
-
-      // C. Add one-time bills for this month
-      bills
-        .filter(b => b.active && b.billType === 'one-time' && b.endDate?.startsWith(targetMonthKey))
-        .forEach(bill => {
-          monthlyTotal += bill.amount;
-          const dueD = new Date(bill.endDate!);
-          billsForMonth.push({
-            ...bill,
-            detail: `Due ${monthLong} ${dueD.getDate()}`
-          });
-        });
+        }
+      });
       
       projectorData.push({ month: monthLabel, amount: monthlyTotal, bills: billsForMonth });
     }
 
     // 2. Maturity Timeline (Upcoming End Dates)
+    // Refinement: Hide if paid for current month OR fully paid installment
     const maturityTimeline = bills
       .filter(b => b.active && b.endDate)
+      .filter(bill => {
+        // A. Check if paid for current month
+        const hasPaidThisMonth = billItems.some(item => 
+          item.billId === bill.id && 
+          item.status === 'paid' && 
+          item.dueDate.startsWith(currentMonthStr)
+        );
+        if (hasPaidThisMonth) return false;
+
+        // B. Check if fully paid installment
+        if (bill.billType === 'installment' && bill.totalAmount) {
+          const totalPaid = billItems
+            .filter(item => item.billId === bill.id && item.status === 'paid')
+            .reduce((sum, item) => sum + item.amount, 0);
+          if (totalPaid >= bill.totalAmount) return false;
+        }
+
+        return true;
+      })
       .map(b => ({
         name: b.name,
         endDate: b.endDate!,
@@ -458,7 +502,7 @@ export default function StatisticsPage() {
         type: b.billType
       }))
       .sort((a, b) => a.endDate.localeCompare(b.endDate))
-      .slice(0, 5); // Show next 5 maturities
+      .slice(0, 5);
 
     // 3. Fixed Cost Ratio
     const avgIncome = monthlyData.reduce((acc, m) => acc + m.income, 0) / (monthlyData.length || 1);
@@ -466,34 +510,42 @@ export default function StatisticsPage() {
     const fixedCostRatio = avgIncome > 0 ? (activeBillsTotal / avgIncome) * 100 : 0;
 
     // 4. Subscription Fatigue
-    const activeCount = bills.filter(b => b.active).length;
-    const archivedCount = bills.filter(b => !b.active).length;
+    // Refinement: Count as archived if manually deactivated OR if end date has passed
+    const activeCount = bills.filter(b => b.active && (!b.endDate || new Date(b.endDate) >= now)).length;
+    const archivedCount = bills.filter(b => !b.active || (b.endDate && new Date(b.endDate) < now)).length;
 
     // 5. 30-Day Heatmap
+    // Refinement: Mark as paid if all bills for that day are settled
     const heatmap = [];
     for (let i = 0; i < 30; i++) {
       const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      
-      // Smart matching for billing_day: handle months with fewer than 31 days
       const isLastDayOfMonth = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getDate() === 1;
       
       const dayBills = bills.filter(b => {
         if (!b.active) return false;
-        // Direct match
         if (b.billing_day === d.getDate()) return true;
-        // Last day catch-all (e.g., bill on 31st should show on 30th/28th if that's the end of month)
         if (isLastDayOfMonth && b.billing_day > d.getDate()) return true;
         return false;
       });
       
       if (dayBills.length > 0) {
+        // Check if all these bills are paid for this date range
+        const allPaid = dayBills.every(bill => {
+          return billItems.some(item => 
+            item.billId === bill.id && 
+            item.status === 'paid' && 
+            (item.dueDate === dateStr || item.dueDate.startsWith(dateStr.slice(0, 7)))
+          );
+        });
+
         heatmap.push({
           date: dateStr,
           day: d.getDate(),
           count: dayBills.length,
           total: dayBills.reduce((acc, b) => acc + b.amount, 0),
-          bills: dayBills
+          bills: dayBills,
+          isPaid: allPaid
         });
       }
     }
@@ -505,7 +557,66 @@ export default function StatisticsPage() {
       subscriptionFatigue: { activeCount, archivedCount },
       heatmap
     };
-  }, [bills, billItems, monthlyData, now]);
+  }, [bills, billItems, monthlyData, now, currentMonthStr]);
+
+  // Section 6: Spending IQ Logic
+  const spendingIQ = useMemo(() => {
+    const monthTransactions = transactions.filter(t => t.date.startsWith(currentMonthStr) && t.type === 'expense');
+    
+    // 1. Top Merchants
+    const merchantMap: Record<string, { amount: number, count: number }> = {};
+    monthTransactions.forEach(t => {
+      // Clean description: take first two words to group common payees
+      const name = t.description.split(' ').slice(0, 2).join(' ').replace(/[^a-zA-Z\s]/g, '').trim() || 'Other';
+      if (!merchantMap[name]) merchantMap[name] = { amount: 0, count: 0 };
+      merchantMap[name].amount += t.amount;
+      merchantMap[name].count += 1;
+    });
+
+    const topMerchants = Object.entries(merchantMap)
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5);
+
+    // 2. Daily Velocity (Burn Rate)
+    // Refinement: Separate "Lifestyle Burn" (Food, etc) from "System Load" (Fixed costs)
+    const fixedCategories = ['Bills', 'Utilities', 'Rent', 'Debt', 'Installment'];
+    const discretionaryTransactions = monthTransactions.filter(t => !fixedCategories.includes(t.category));
+    
+    const daysInMonthSoFar = now.getDate();
+    const lifestyleSpent = discretionaryTransactions.reduce((acc, t) => acc + t.amount, 0);
+    const lifestyleVelocity = daysInMonthSoFar > 0 ? lifestyleSpent / daysInMonthSoFar : 0;
+
+    // Forecast: Current Spend + Unpaid obligations for the rest of June
+    const unpaidJuneBills = billsIntelligence.projectorData.find(p => p.month === now.toLocaleString('default', { month: 'short', year: '2-digit' }))?.amount || 0;
+    const totalCommittedMonth = snapshot.expense + unpaidJuneBills;
+    const systemVelocity = totalCommittedMonth / 30;
+
+    // 3. Lifestyle Ratio (Needs vs Wants)
+    // Categories that are generally "Needs"
+    const needsCategories = ['Bills', 'Utilities', 'Rent', 'Groceries', 'Transport', 'Healthcare', 'Education'];
+    let needsAmount = 0;
+    let wantsAmount = 0;
+
+    monthTransactions.forEach(t => {
+      if (needsCategories.includes(t.category)) {
+        needsAmount += t.amount;
+      } else {
+        wantsAmount += t.amount;
+      }
+    });
+
+    const total = needsAmount + wantsAmount;
+    const needsPercent = total > 0 ? (needsAmount / total) * 100 : 0;
+    const wantsPercent = total > 0 ? (wantsAmount / total) * 100 : 0;
+
+    return {
+      topMerchants,
+      lifestyleVelocity,
+      systemVelocity,
+      lifestyleRatio: { needsPercent, wantsPercent, needsAmount, wantsAmount }
+    };
+  }, [transactions, currentMonthStr, now, billsIntelligence.projectorData, snapshot.expense]);
 
   if (loading) {
     return (
@@ -890,6 +1001,7 @@ export default function StatisticsPage() {
                       
                       // Intensity based on count
                       const intensity = heatmapItem ? Math.min(0.5 + (heatmapItem.count * 0.1), 1) : 1;
+                      const isPaid = heatmapItem?.isPaid;
 
                       return (
                           <div 
@@ -908,13 +1020,16 @@ export default function StatisticsPage() {
                             onMouseLeave={() => setHeatmapHover(null)}
                             className={`aspect-square rounded-xl flex flex-col items-center justify-center text-[10px] font-black transition-all ${
                                 heatmapItem 
-                                ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20 scale-105 z-10 cursor-pointer hover:scale-110 active:scale-95' 
+                                ? (isPaid 
+                                   ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 scale-105 z-10 cursor-pointer hover:scale-110 active:scale-95' 
+                                   : 'bg-rose-500 text-white shadow-lg shadow-rose-500/20 scale-105 z-10 cursor-pointer hover:scale-110 active:scale-95')
                                 : 'bg-white dark:bg-zinc-900 text-zinc-300'
                             }`}
                             style={heatmapItem ? { opacity: intensity } : {}}
                           >
                               <span className="text-[7px] opacity-60 mb-0.5 uppercase">{d.toLocaleString('default', { weekday: 'short' }).slice(0, 1)}</span>
                               {d.getDate()}
+                              {isPaid && <Check className="w-2 h-2 mt-0.5" />}
                           </div>
                       );
                   })}
@@ -981,64 +1096,173 @@ export default function StatisticsPage() {
           </div>
         )}
         {activeTab === 'spending' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 flex flex-col h-[450px]">
-              <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-3">
-                  <PieIcon className="w-5 h-5 text-emerald-600" />
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Card: Top Merchants */}
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800">
+                <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">Spending distribution</h3>
+                    <LayoutGrid className="w-4 h-4 text-emerald-600" />
+                    <h4 className="text-sm font-black text-zinc-900 dark:text-zinc-50 uppercase tracking-tight">Top Merchants</h4>
+                  </div>
+                  <div className="group relative">
+                    <Info className="w-3.5 h-3.5 text-zinc-300 hover:text-emerald-500 cursor-help transition-colors" />
+                    <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 hidden group-hover:block w-48 p-3 bg-zinc-900 text-white text-[10px] font-bold rounded-2xl shadow-2xl z-[100] text-center animate-in fade-in zoom-in-95 duration-200">
+                      Top 5 payees by total volume this month. Helps identify where most of your money flows.
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-zinc-900" />
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {spendingIQ.topMerchants.map((m, i) => (
+                    <div key={i} className="flex items-center justify-between group/item">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-zinc-50 dark:bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-400 group-hover/item:bg-emerald-50 group-hover/item:text-emerald-600 transition-colors uppercase">
+                          {m.name.slice(0, 2)}
+                        </div>
+                        <div>
+                          <p className="text-xs font-black text-zinc-900 dark:text-zinc-50 truncate w-24">{m.name}</p>
+                          <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">{m.count} Transactions</p>
+                        </div>
+                      </div>
+                      <p className="text-xs font-black text-zinc-900 dark:text-zinc-50">{formatIDR(m.amount)}</p>
+                    </div>
+                  ))}
+                  {spendingIQ.topMerchants.length === 0 && (
+                    <p className="text-xs text-zinc-400 text-center py-8">No data available for this month.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Card: Daily Velocity */}
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-emerald-600" />
+                      <h4 className="text-sm font-black text-zinc-900 dark:text-zinc-50 uppercase tracking-tight">Daily Velocity</h4>
+                    </div>
                     <div className="group relative">
                       <Info className="w-3.5 h-3.5 text-zinc-300 hover:text-emerald-500 cursor-help transition-colors" />
-                      <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 hidden group-hover:block w-48 p-3 bg-zinc-900 text-white text-[10px] font-bold rounded-2xl shadow-2xl z-[100] text-center animate-in fade-in zoom-in-95 duration-200">
-                        Categorical breakdown of your expenses for the current month.
+                      <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 hidden group-hover:block w-56 p-4 bg-zinc-900 text-white text-[10px] font-bold rounded-2xl shadow-2xl z-[100] text-center animate-in fade-in zoom-in-95 duration-200">
+                        <p className="mb-2 text-emerald-400">Lifestyle Burn:</p>
+                        Your true day-to-day spending (Food, Coffee, etc.), excluding fixed bills and debt.
+                        <p className="mt-2 text-indigo-400">System Load:</p>
+                        The total monthly cost (current spend + unpaid bills) divided by 30 days.
                         <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-zinc-900" />
                       </div>
                     </div>
                   </div>
+                  <div className="text-center py-2">
+                    <p className="text-3xl font-black text-emerald-600">{formatIDR(spendingIQ.lifestyleVelocity)}</p>
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-1">Lifestyle Burn (Daily)</p>
+                  </div>
+                </div>
+                <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
+                  <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-tighter">
+                    <span className="text-zinc-400">System Load (Avg)</span>
+                    <span className="text-indigo-600 dark:text-indigo-400">{formatIDR(spendingIQ.systemVelocity)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-tighter">
+                    <span className="text-zinc-400">Month Projection</span>
+                    <span className="text-zinc-900 dark:text-zinc-50">{formatIDR(spendingIQ.systemVelocity * 30)}</span>
+                  </div>
                 </div>
               </div>
-              <DashboardChart
-                  transactions={transactions}
-                  onCategoryClick={(cat) => {
-                    if (cat !== 'all') {
-                      setIsBreakdownOpen(true);
-                    }
-                  }}
-              />
+
+              {/* Card: Lifestyle Ratio */}
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-emerald-600" />
+                    <h4 className="text-sm font-black text-zinc-900 dark:text-zinc-50 uppercase tracking-tight">Lifestyle Ratio</h4>
+                  </div>
+                  <div className="group relative">
+                    <Info className="w-3.5 h-3.5 text-zinc-300 hover:text-emerald-500 cursor-help transition-colors" />
+                    <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 hidden group-hover:block w-48 p-3 bg-zinc-900 text-white text-[10px] font-bold rounded-2xl shadow-2xl z-[100] text-center animate-in fade-in zoom-in-95 duration-200">
+                      Needs (Survival) vs. Wants (Lifestyle). Balanced spending follows a 50/30/20 rule.
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-zinc-900" />
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-black text-zinc-400 uppercase">Survival (Needs)</span>
+                      <span className="text-xs font-black text-zinc-900 dark:text-zinc-50">{spendingIQ.lifestyleRatio.needsPercent.toFixed(0)}%</span>
+                    </div>
+                    <div className="h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${spendingIQ.lifestyleRatio.needsPercent}%` }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-black text-zinc-400 uppercase">Lifestyle (Wants)</span>
+                      <span className="text-xs font-black text-zinc-900 dark:text-zinc-50">{spendingIQ.lifestyleRatio.wantsPercent.toFixed(0)}%</span>
+                    </div>
+                    <div className="h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                      <div className="h-full bg-amber-500 rounded-full" style={{ width: `${spendingIQ.lifestyleRatio.wantsPercent}%` }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 flex flex-col h-[450px]">
-               <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-3">
-                  <BarChart3 className="w-5 h-5 text-emerald-600" />
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">Cash Flow Trend</h3>
-                    <div className="group relative">
-                      <Info className="w-3.5 h-3.5 text-zinc-300 hover:text-emerald-500 cursor-help transition-colors" />
-                      <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 hidden group-hover:block w-48 p-3 bg-zinc-900 text-white text-[10px] font-bold rounded-2xl shadow-2xl z-[100] text-center animate-in fade-in zoom-in-95 duration-200">
-                        Historical comparison of your monthly income vs. expenses.
-                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-zinc-900" />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 flex flex-col h-[450px]">
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-3">
+                    <PieIcon className="w-5 h-5 text-emerald-600" />
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">Spending distribution</h3>
+                      <div className="group relative">
+                        <Info className="w-3.5 h-3.5 text-zinc-300 hover:text-emerald-500 cursor-help transition-colors" />
+                        <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 hidden group-hover:block w-48 p-3 bg-zinc-900 text-white text-[10px] font-bold rounded-2xl shadow-2xl z-[100] text-center animate-in fade-in zoom-in-95 duration-200">
+                          Categorical breakdown of your expenses for the current month.
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-zinc-900" />
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
+                <DashboardChart
+                    transactions={transactions.filter(t => t.date.startsWith(currentMonthStr))}
+                    onCategoryClick={() => setIsBreakdownOpen(true)}
+                />
               </div>
-              <div className="flex-1 min-h-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={monthlyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
-                    <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa', fontWeight: 600 }} dy={10} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa', fontWeight: 600 }} tickFormatter={(v) => `${(v/1000000).toFixed(1)}M`} />
-                    <Tooltip 
-                      formatter={(value: number, name: string) => [formatIDR(value), name]}
-                      contentStyle={{ backgroundColor: '#fff', borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: 'bold' }}
-                    />
-                    <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '10px', paddingBottom: '20px', textTransform: 'uppercase' }} />
-                    <Line type="monotone" dataKey="income" name="Income" stroke="#10b981" strokeWidth={4} dot={{ r: 4, fill: '#10b981' }} activeDot={{ r: 6 }} />
-                    <Line type="monotone" dataKey="expense" name="Expense" stroke="#ef4444" strokeWidth={4} dot={{ r: 4, fill: '#ef4444' }} activeDot={{ r: 6 }} />
-                  </LineChart>
-                </ResponsiveContainer>
+
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 flex flex-col h-[450px]">
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-3">
+                    <BarChart3 className="w-5 h-5 text-emerald-600" />
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">Cash Flow Trend</h3>
+                      <div className="group relative">
+                        <Info className="w-3.5 h-3.5 text-zinc-300 hover:text-emerald-500 cursor-help transition-colors" />
+                        <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 hidden group-hover:block w-48 p-3 bg-zinc-900 text-white text-[10px] font-bold rounded-2xl shadow-2xl z-[100] text-center animate-in fade-in zoom-in-95 duration-200">
+                          Historical comparison of your monthly income vs. expenses.
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-zinc-900" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex-1 min-h-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={monthlyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
+                      <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa', fontWeight: 600 }} dy={10} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa', fontWeight: 600 }} tickFormatter={(v) => `${(v/1000000).toFixed(1)}M`} />
+                      <Tooltip 
+                        formatter={(value: number, name: string) => [formatIDR(value), name]}
+                        contentStyle={{ backgroundColor: '#fff', borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: 'bold' }}
+                      />
+                      <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '10px', paddingBottom: '20px', textTransform: 'uppercase' }} />
+                      <Line type="monotone" dataKey="income" name="Income" stroke="#10b981" strokeWidth={4} dot={{ r: 4, fill: '#10b981' }} activeDot={{ r: 6 }} />
+                      <Line type="monotone" dataKey="expense" name="Expense" stroke="#ef4444" strokeWidth={4} dot={{ r: 4, fill: '#ef4444' }} activeDot={{ r: 6 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
             </div>
           </div>
@@ -1169,6 +1393,13 @@ export default function StatisticsPage() {
           </div>
         )}
       </div>
+
+      <CategoryBreakdownModal 
+        isOpen={isBreakdownOpen}
+        onClose={() => setIsBreakdownOpen(false)}
+        transactions={transactions.filter(t => t.date.startsWith(currentMonthStr))}
+        title={`${now.toLocaleString('default', { month: 'long', year: 'numeric' })} Spending Overview`}
+      />
 
       <InfoModal 
         isOpen={infoModal.isOpen}

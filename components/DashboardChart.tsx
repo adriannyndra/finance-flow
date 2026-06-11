@@ -76,9 +76,9 @@ export default function DashboardChart({ transactions, title, onCategoryClick }:
               ))}
             </Pie>
             <Tooltip
-              formatter={(value: number, name: string, entry: any) => [
-                <span key="val" style={{ color: entry.color || entry.payload.fill || '#18181b' }}>{formatIDR(value)}</span>,
-                <span key="name" style={{ color: '#18181b' }}>{name}</span>
+              formatter={(value: number, name: string) => [
+                formatIDR(value),
+                name
               ]}
               contentStyle={{
                 backgroundColor: '#fff',
@@ -86,8 +86,10 @@ export default function DashboardChart({ transactions, title, onCategoryClick }:
                 border: 'none',
                 boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
                 fontSize: '12px',
-                fontWeight: 'bold'
+                fontWeight: '900',
+                color: '#18181b'
               }}
+              itemStyle={{ padding: '2px 0' }}
             />
             <Legend 
               verticalAlign="bottom" 
